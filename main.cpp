@@ -94,7 +94,7 @@ vector<Shape> shapes;
 // ════════════════════════════════════════════════════════════════════════════
 
 COLORREF currentColor = RGB(0, 0, 0); // active drawing color, set by color picker
-                                      // all members use this when drawing
+// all members use this when drawing
 
 bool useCustomCursor = false; // toggles between arrow and crosshair cursor
 bool whiteBg = false;         // toggles between gray and white background
@@ -126,21 +126,41 @@ int ellipseCX = 0, ellipseCY = 0;
 // curveCollecting becomes true after the user enters tension in console.
 // Points accumulate with each left-click; right-click finalises the spline.
 bool           curveCollecting = false;
-double         curveTension    = 0.5;
+double         curveTension = 0.5;
 vector<POINT>  curvePoints;
 
 // ── Circle-fill click-state  ────────────────────────────
 // Two clicks define the circle (center then edge), quarter comes from console.
 bool fillWaitingCenter = false;
-bool fillWaitingEdge   = false;
+bool fillWaitingEdge = false;
 int  fillCX = 0, fillCY = 0;
-int  fillQuarter = 1;          // 1=top-right 2=top-left 3=bottom-left 4=bottom-right
+int  fillQuarter = 1;    // 1=top-right 2=top-left 3=bottom-left 4=bottom-right
 
+// ── Hermite square fill click-state ──────────────────────────────────────
+// Two clicks: top-left corner, then bottom-right corner.
+bool hermiteWaitingSecond = false;
+int  hermiteX1 = 0, hermiteY1 = 0;
+
+// ── Bezier rectangle fill click-state ────────────────────────────────────
+// Two clicks: any corner, then the opposite corner.
+bool bezierRectWaitingSecond = false;
+int  bezierX1 = 0, bezierY1 = 0;
 // ── Smiley face click-state ────────────────────────────
 // Two clicks: center then edge to set face radius.
 bool smileyWaitingCenter = false;
-bool smileyWaitingEdge   = false;
+bool smileyWaitingEdge = false;
 int  smileyCX = 0, smileyCY = 0;
+
+// ── Flood fill state ─────────────────────────────────────────────────────
+struct Point {
+    int x, y;
+    Point(int x = 0, int y = 0) : x(x), y(y) {}
+};
+
+POINT pts[5];
+int pointCount = 0;
+bool polygonDrawn = false;
+bool useRecursive = true;
 
 // ── 5: Add clipping click-state variables here ────────────────────
 
@@ -176,18 +196,26 @@ void EllipseDraw(HDC hdc, int xc, int yc, int x, int y, COLORREF c);
 // ──  Curve functions ─────────────────────────────────────
 void GetHermiteCoeff(double p0, double s0, double p1, double s1, double coeff[4]);
 void DrawHermiteSeg(HDC hdc, int x0, int y0, int tx0, int ty0,
-                    int x1, int y1, int tx1, int ty1, COLORREF c, int numpts = 200);
+    int x1, int y1, int tx1, int ty1, COLORREF c, int numpts = 200);
 void DrawCardinalSpline(HDC hdc, POINT P[], int n, double tension, COLORREF c);
 
 // ──  Circle fill functions ──────────────────────────────
 void FillCircleWithLines(HDC hdc, int xc, int yc, int R, int quarter, COLORREF c);
 void FillCircleWithCircles(HDC hdc, int xc, int yc, int R, int quarter, COLORREF c);
+// ── Hermite&Bezier fill functions ──────────────────────────────
+void FillSquareHermite(HDC hdc, int x1, int y1, int x2, int y2, COLORREF c);
+void FillRectangleBezier(HDC hdc, int x1, int y1, int x2, int y2, COLORREF c);
+// ──  flood fill functions ──────────────────────────────
+void DrawPolygon(HDC hdc);   
+void RecursiveFloodFill(HDC hdc, int x, int y, COLORREF bc, COLORREF fc);
+void NonRecursiveFloodFill(HDC hdc, int x, int y, COLORREF bc, COLORREF fc);
+bool IsPointInsidePolygon(int x, int y);
 
 // ── Smiley face helpers ─────────────────────────────────
 void DrawArc(HDC hdc, int cx, int cy, int rx, int ry,
-             double tStart, double tEnd, COLORREF c);
+    double tStart, double tEnd, COLORREF c);
 void DrawSmileyHappy(HDC hdc, int cx, int cy, int R, COLORREF c);
-void DrawSmileySad  (HDC hdc, int cx, int cy, int R, COLORREF c);
+void DrawSmileySad(HDC hdc, int cx, int cy, int R, COLORREF c);
 
 // ── 5: Declare clipping functions here ─────────────────────────────
 
@@ -200,14 +228,14 @@ void DrawSmileySad  (HDC hdc, int cx, int cy, int R, COLORREF c);
 // nCmdShow     : how to show the window (maximized, normal, etc.)
 // ════════════════════════════════════════════════════════════════════════════
 int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
-                     LPSTR lpCmdLine, int nCmdShow)
+    LPSTR lpCmdLine, int nCmdShow)
 {
     // Open a console window alongside the GUI window.
     // Without this, cout output goes nowhere in a Win32 app.
     // freopen_s redirects stdout and stdin to the console window.
     AllocConsole();
-    freopen_s((FILE **)stdout, "CONOUT$", "w", stdout);
-    freopen_s((FILE **)stdin, "CONIN$", "r", stdin);
+    freopen_s((FILE**)stdout, "CONOUT$", "w", stdout);
+    freopen_s((FILE**)stdin, "CONIN$", "r", stdin);
     cout << "[INFO] 2D Drawing Package started.\n";
     cout << "[INFO] Pick a tool from the menu, then click two points.\n";
 
@@ -281,19 +309,19 @@ HMENU CreateAppMenu()
     AppendMenu(menuBar, MF_POPUP, (UINT_PTR)lineMenu, L"Lines");
 
     // ── 2: Replace this placeholder with your real circle menu ────
-     HMENU circleMenu = CreatePopupMenu();
-     AppendMenu(circleMenu, MF_STRING, ID_CIRCLE_DIRECT,       L"Direct");
-     AppendMenu(circleMenu, MF_STRING, ID_CIRCLE_POLAR,        L"Polar");
-     AppendMenu(circleMenu, MF_STRING, ID_CIRCLE_ITER_POLAR,   L"Iterative Polar");
-     AppendMenu(circleMenu, MF_STRING, ID_CIRCLE_MIDPOINT,     L"MID");
-     AppendMenu(circleMenu, MF_STRING, ID_CIRCLE_MOD_MIDPOINT, L"Modified Midpoint");
-     AppendMenu(menuBar, MF_POPUP, (UINT_PTR)circleMenu, L"Circles");
+    HMENU circleMenu = CreatePopupMenu();
+    AppendMenu(circleMenu, MF_STRING, ID_CIRCLE_DIRECT, L"Direct");
+    AppendMenu(circleMenu, MF_STRING, ID_CIRCLE_POLAR, L"Polar");
+    AppendMenu(circleMenu, MF_STRING, ID_CIRCLE_ITER_POLAR, L"Iterative Polar");
+    AppendMenu(circleMenu, MF_STRING, ID_CIRCLE_MIDPOINT, L"MID");
+    AppendMenu(circleMenu, MF_STRING, ID_CIRCLE_MOD_MIDPOINT, L"Modified Midpoint");
+    AppendMenu(menuBar, MF_POPUP, (UINT_PTR)circleMenu, L"Circles");
 
     // ── 3: Replace placeholders with real Ellipse + Curves menus ──
     HMENU ellipseMenu = CreatePopupMenu();
-    AppendMenu(ellipseMenu, MF_STRING, ID_ELLIPSE_DIRECT,       L"Direct");
-    AppendMenu(ellipseMenu, MF_STRING, ID_ELLIPSE_MID,       L"Midpoint");
-    AppendMenu(ellipseMenu, MF_STRING, ID_ELLIPSE_POLAR,       L"Polar");
+    AppendMenu(ellipseMenu, MF_STRING, ID_ELLIPSE_DIRECT, L"Direct");
+    AppendMenu(ellipseMenu, MF_STRING, ID_ELLIPSE_MID, L"Midpoint");
+    AppendMenu(ellipseMenu, MF_STRING, ID_ELLIPSE_POLAR, L"Polar");
     AppendMenu(menuBar, MF_POPUP, (UINT_PTR)ellipseMenu, L"Ellipse");
 
     // ── Curves menu  ───────────────────────────────────────
@@ -303,9 +331,14 @@ HMENU CreateAppMenu()
 
     // ── Filling menu (These are Hazem's items only; others will be added :)  ) ──
     HMENU fillMenu = CreatePopupMenu();
-    AppendMenu(fillMenu, MF_STRING, ID_FILL_CIRCLE_LINES,   L"Circle with Lines");
+    AppendMenu(fillMenu, MF_STRING, ID_FILL_CIRCLE_LINES, L"Circle with Lines");
     AppendMenu(fillMenu, MF_STRING, ID_FILL_CIRCLE_CIRCLES, L"Circle with Circles");
+    AppendMenu(fillMenu, MF_STRING, ID_FILL_SQUARE_HERMIT, L"Square with Hermite");   // NEW
+    AppendMenu(fillMenu, MF_STRING, ID_FILL_RECT_BEZIER, L"Rectangle with Bezier"); // NEW
+    AppendMenu(fillMenu, MF_STRING, ID_FILL_FLOOD_REC, L"Flood Fill (Recursive)");
+    AppendMenu(fillMenu, MF_STRING, ID_FILL_FLOOD_NONREC, L"Flood Fill (Non-Recursive)");
     AppendMenu(menuBar, MF_POPUP, (UINT_PTR)fillMenu, L"Filling");
+
 
     // ── 5: Replace placeholder with real Clipping menu ────────────
     AppendMenu(menuBar, MF_POPUP, (UINT_PTR)CreatePopupMenu(), L"Clipping"); // replace when done
@@ -313,7 +346,7 @@ HMENU CreateAppMenu()
     // ── Bonus menu ────────────────────────────────────────
     HMENU bonusMenu = CreatePopupMenu();
     AppendMenu(bonusMenu, MF_STRING, ID_BONUS_HAPPY, L"Happy Smiley");
-    AppendMenu(bonusMenu, MF_STRING, ID_BONUS_SAD,   L"Sad Smiley");
+    AppendMenu(bonusMenu, MF_STRING, ID_BONUS_SAD, L"Sad Smiley");
     AppendMenu(menuBar, MF_POPUP, (UINT_PTR)bonusMenu, L"Bonus");
 
     return menuBar;
@@ -330,16 +363,20 @@ void ClearScreen(HWND hwnd)
     InvalidateRect(hwnd, NULL, TRUE);
 
     // Also reset any in-progress drawing state so the next tool starts clean
-    activeAlgorithm     = "";
+    activeAlgorithm = "";
     waitingForSecondClick = false;
     circleWaitingForRadius = false;
-    ellipseWaiting      = false;
-    curveCollecting     = false;
+    ellipseWaiting = false;
+    curveCollecting = false;
     curvePoints.clear();
-    fillWaitingCenter   = false;
-    fillWaitingEdge     = false;
+    fillWaitingCenter = false;
+    fillWaitingEdge = false;
     smileyWaitingCenter = false;
-    smileyWaitingEdge   = false;
+    smileyWaitingEdge = false;
+    hermiteWaitingSecond = false;
+    bezierRectWaitingSecond = false;
+    pointCount = 0;
+    polygonDrawn = false;
 
     // Clear the console window so the log is fresh for the next test
     system("cls");
@@ -361,21 +398,21 @@ void ClearScreen(HWND hwnd)
 void SaveToFile(HWND hwnd)
 {
     thread([]()
-           {
-        cout << "[FILE] Enter filename to save (ex. drawing.txt): ";
-        string filename;
-        cin >> filename;
+        {
+            cout << "[FILE] Enter filename to save (ex. drawing.txt): ";
+            string filename;
+            cin >> filename;
 
-        ofstream file(filename);
-        if (!file.is_open()) { cout << "[ERROR] Cannot open file.\n"; return; }
+            ofstream file(filename);
+            if (!file.is_open()) { cout << "[ERROR] Cannot open file.\n"; return; }
 
-        for (auto& s : shapes) {
-            file << s.type << " " << (int)s.color << " " << s.params.size();
-            for (int p : s.params) file << " " << p;
-            file << "\n";
-        }
-        file.close();
-        cout << "[FILE] Saved " << shapes.size() << " shapes to " << filename << "\n"; })
+            for (auto& s : shapes) {
+                file << s.type << " " << (int)s.color << " " << s.params.size();
+                for (int p : s.params) file << " " << p;
+                file << "\n";
+            }
+            file.close();
+            cout << "[FILE] Saved " << shapes.size() << " shapes to " << filename << "\n"; })
         .detach();
 }
 
@@ -388,36 +425,36 @@ void SaveToFile(HWND hwnd)
 void LoadFromFile(HWND hwnd)
 {
     thread([hwnd]()
-           {
-               cout << "[FILE] Enter filename to load (ex. drawing.txt): ";
-               string filename;
-               cin >> filename;
+        {
+            cout << "[FILE] Enter filename to load (ex. drawing.txt): ";
+            string filename;
+            cin >> filename;
 
-               ifstream file(filename);
-               if (!file.is_open())
-               {
-                   cout << "[ERROR] Cannot open file.\n";
-                   return;
-               }
+            ifstream file(filename);
+            if (!file.is_open())
+            {
+                cout << "[ERROR] Cannot open file.\n";
+                return;
+            }
 
-               shapes.clear();
-               string type;
-               while (file >> type)
-               {
-                   Shape s;
-                   s.type = type;
-                   int colorVal, count;
-                   file >> colorVal >> count;
-                   s.color = (COLORREF)colorVal;
-                   s.params.resize(count);
-                   for (int i = 0; i < count; i++)
-                       file >> s.params[i];
-                   shapes.push_back(s);
-               }
-               file.close();
-               cout << "[FILE] Loaded " << shapes.size() << " shapes from " << filename << "\n";
-               InvalidateRect(hwnd, NULL, FALSE); // triggers WM_PAINT → RedrawShapes
-           })
+            shapes.clear();
+            string type;
+            while (file >> type)
+            {
+                Shape s;
+                s.type = type;
+                int colorVal, count;
+                file >> colorVal >> count;
+                s.color = (COLORREF)colorVal;
+                s.params.resize(count);
+                for (int i = 0; i < count; i++)
+                    file >> s.params[i];
+                shapes.push_back(s);
+            }
+            file.close();
+            cout << "[FILE] Loaded " << shapes.size() << " shapes from " << filename << "\n";
+            InvalidateRect(hwnd, NULL, FALSE); // triggers WM_PAINT → RedrawShapes
+        })
         .detach();
 }
 
@@ -441,35 +478,35 @@ void RedrawShapes(HDC hdc)
     // Using chained if/else-if with an outer size guard caused shapes with
     // params.size() >= 4 (ellipses, curves, fills) to fall into the lines
     // block and never reach their own branch — fixed here.
-    for (auto &s : shapes)
+    for (auto& s : shapes)
     {
         // ── Lines ─────────────────────────────────────────────────
-        if      (s.type == "LINE_DDA"        && s.params.size() >= 4)
-            LineDDA       (hdc, s.params[0], s.params[1], s.params[2], s.params[3], s.color);
-        else if (s.type == "LINE_MIDPOINT"   && s.params.size() >= 4)
-            LineMidpoint  (hdc, s.params[0], s.params[1], s.params[2], s.params[3], s.color);
+        if (s.type == "LINE_DDA" && s.params.size() >= 4)
+            LineDDA(hdc, s.params[0], s.params[1], s.params[2], s.params[3], s.color);
+        else if (s.type == "LINE_MIDPOINT" && s.params.size() >= 4)
+            LineMidpoint(hdc, s.params[0], s.params[1], s.params[2], s.params[3], s.color);
         else if (s.type == "LINE_PARAMETRIC" && s.params.size() >= 4)
             LineParametric(hdc, s.params[0], s.params[1], s.params[2], s.params[3], s.color);
 
         // ── Circles ───────────────────────────────────────────────
-        else if (s.type == "CIRCLE_DIRECT"       && s.params.size() >= 3)
-            CircleDirect    (hdc, s.params[0], s.params[1], s.params[2], s.color);
-        else if (s.type == "CIRCLE_POLAR"        && s.params.size() >= 3)
-            CirclePolar     (hdc, s.params[0], s.params[1], s.params[2], s.color);
-        else if (s.type == "CIRCLE_ITER_POLAR"   && s.params.size() >= 3)
-            CircleIterPolar (hdc, s.params[0], s.params[1], s.params[2], s.color);
-        else if (s.type == "CIRCLE_MIDPOINT"     && s.params.size() >= 3)
-            CircleMidpoint  (hdc, s.params[0], s.params[1], s.params[2], s.color);
+        else if (s.type == "CIRCLE_DIRECT" && s.params.size() >= 3)
+            CircleDirect(hdc, s.params[0], s.params[1], s.params[2], s.color);
+        else if (s.type == "CIRCLE_POLAR" && s.params.size() >= 3)
+            CirclePolar(hdc, s.params[0], s.params[1], s.params[2], s.color);
+        else if (s.type == "CIRCLE_ITER_POLAR" && s.params.size() >= 3)
+            CircleIterPolar(hdc, s.params[0], s.params[1], s.params[2], s.color);
+        else if (s.type == "CIRCLE_MIDPOINT" && s.params.size() >= 3)
+            CircleMidpoint(hdc, s.params[0], s.params[1], s.params[2], s.color);
         else if (s.type == "CIRCLE_MOD_MIDPOINT" && s.params.size() >= 3)
-            CircleModMid    (hdc, s.params[0], s.params[1], s.params[2], s.color);
+            CircleModMid(hdc, s.params[0], s.params[1], s.params[2], s.color);
 
         // ── Ellipses ──────────────────────────────────────────────
-        else if (s.type == "ELLIPSE_DIRECT"   && s.params.size() >= 4)
-            EllipseDirect  (hdc, s.params[0], s.params[1], s.params[2], s.params[3], s.color);
+        else if (s.type == "ELLIPSE_DIRECT" && s.params.size() >= 4)
+            EllipseDirect(hdc, s.params[0], s.params[1], s.params[2], s.params[3], s.color);
         else if (s.type == "ELLIPSE_Midpoint" && s.params.size() >= 4)
             EllipseMidpoint(hdc, s.params[0], s.params[1], s.params[2], s.params[3], s.color);
-        else if (s.type == "ELLIPSE_Polar"    && s.params.size() >= 4)
-            EllipsePolar   (hdc, s.params[0], s.params[1], s.params[2], s.params[3], s.color);
+        else if (s.type == "ELLIPSE_Polar" && s.params.size() >= 4)
+            EllipsePolar(hdc, s.params[0], s.params[1], s.params[2], s.params[3], s.color);
 
         // ── Cardinal Spline  ─────────────────────────────
         // Params layout: [tension*1000, n, x0,y0, x1,y1, ..., xn-1,yn-1]
@@ -491,17 +528,37 @@ void RedrawShapes(HDC hdc)
 
         // ── Circle fill  — Params: [cx, cy, R, quarter] ─
         else if (s.type == "FILL_CIRCLE_LINES" && s.params.size() >= 4)
-            FillCircleWithLines  (hdc, s.params[0], s.params[1],
-                                  s.params[2], s.params[3], s.color);
+            FillCircleWithLines(hdc, s.params[0], s.params[1],
+                s.params[2], s.params[3], s.color);
         else if (s.type == "FILL_CIRCLE_CIRCLES" && s.params.size() >= 4)
             FillCircleWithCircles(hdc, s.params[0], s.params[1],
-                                  s.params[2], s.params[3], s.color);
-
+                s.params[2], s.params[3], s.color);
+        else if (s.type == "Recursive_Flood_Fill" && s.params.size() >= 4)
+            FillCircleWithCircles(hdc, s.params[0], s.params[1],
+                s.params[2], s.params[3], s.color);
         // ── Smiley faces  — Params: [cx, cy, R] ─────────
         else if (s.type == "SMILEY_HAPPY" && s.params.size() >= 3)
             DrawSmileyHappy(hdc, s.params[0], s.params[1], s.params[2], s.color);
-        else if (s.type == "SMILEY_SAD"   && s.params.size() >= 3)
-            DrawSmileySad  (hdc, s.params[0], s.params[1], s.params[2], s.color);
+        else if (s.type == "SMILEY_SAD" && s.params.size() >= 3)
+            DrawSmileySad(hdc, s.params[0], s.params[1], s.params[2], s.color);
+        // ── Hermite square fill — params: [x1, y1, x2, y2] ──────────────
+        else if (s.type == "FILL_SQUARE_HERMIT" && s.params.size() >= 4)
+            FillSquareHermite(hdc, s.params[0], s.params[1],
+                s.params[2], s.params[3], s.color);
+
+        // ── Bezier rectangle fill — params: [x1, y1, x2, y2] ────────────
+        else if (s.type == "FILL_RECT_BEZIER" && s.params.size() >= 4)
+            FillRectangleBezier(hdc, s.params[0], s.params[1],
+                s.params[2], s.params[3], s.color);
+
+        else if (s.type == "Recursive_Flood_Fill" && s.params.size() >= 4)
+            FillCircleWithCircles(hdc, s.params[0], s.params[1],
+                s.params[2], s.params[3], s.color);
+
+        else if (s.type == "SMILEY_HAPPY" && s.params.size() >= 3)
+            DrawSmileyHappy(hdc, s.params[0], s.params[1], s.params[2], s.color);
+        else if (s.type == "SMILEY_SAD" && s.params.size() >= 3)
+            DrawSmileySad(hdc, s.params[0], s.params[1], s.params[2], s.color);
 
         // ── 5: Clipping doesn't need redraw entries —
         //    it operates on existing shapes using the clipping window
@@ -619,58 +676,58 @@ void DrawLine(HDC hdc, int x1, int y1, int x2, int y2, COLORREF c)
 
 
 // ── 2: Add your circle functions below DrawLine ───────────────────
-void CircleDraw(HDC hdc, int cx, int cy, int r, COLORREF c){
-    if(activeAlgorithm == "MID")
+void CircleDraw(HDC hdc, int cx, int cy, int r, COLORREF c) {
+    if (activeAlgorithm == "MID")
         CircleMidpoint(hdc, cx, cy, r, c);
-    else if(activeAlgorithm == "Modified_Midpoint")
+    else if (activeAlgorithm == "Modified_Midpoint")
         CircleModMid(hdc, cx, cy, r, c);
-    else if(activeAlgorithm == "DIRECT")
+    else if (activeAlgorithm == "DIRECT")
         CircleDirect(hdc, cx, cy, r, c);
-    else if(activeAlgorithm == "POLAR")
+    else if (activeAlgorithm == "POLAR")
         CirclePolar(hdc, cx, cy, r, c);
-    else if(activeAlgorithm == "Iterative_POLAR")
+    else if (activeAlgorithm == "Iterative_POLAR")
         CircleIterPolar(hdc, cx, cy, r, c);
 
 }
 
 //Draw with the 8 points of symmetry
-void drawPoints(HDC hdc, int xc, int yc, int x, int y, COLORREF c){
-    SetPixel(hdc, xc+x, yc+y, c);
-    SetPixel(hdc, xc-x, yc+y, c);
-    SetPixel(hdc, xc-x, yc-y, c);
-    SetPixel(hdc, xc+x, yc-y, c);
-    SetPixel(hdc, xc+y, yc+x, c);
-    SetPixel(hdc, xc+y, yc-x, c);
-    SetPixel(hdc, xc-y, yc-x, c);
-    SetPixel(hdc, xc-y, yc+x, c);
+void drawPoints(HDC hdc, int xc, int yc, int x, int y, COLORREF c) {
+    SetPixel(hdc, xc + x, yc + y, c);
+    SetPixel(hdc, xc - x, yc + y, c);
+    SetPixel(hdc, xc - x, yc - y, c);
+    SetPixel(hdc, xc + x, yc - y, c);
+    SetPixel(hdc, xc + y, yc + x, c);
+    SetPixel(hdc, xc + y, yc - x, c);
+    SetPixel(hdc, xc - y, yc - x, c);
+    SetPixel(hdc, xc - y, yc + x, c);
 }
 
-void CircleDirect(HDC hdc, int xc, int yc, int R , COLORREF c){
+void CircleDirect(HDC hdc, int xc, int yc, int R, COLORREF c) {
     int x = 0;
     int y = R;
     drawPoints(hdc, xc, yc, x, y, c);
 
-    while(x < y){
+    while (x < y) {
         x++;
-        y = round(sqrt((pow(R,2)) - (pow(x, 2))));
+        y = round(sqrt((pow(R, 2)) - (pow(x, 2))));
         drawPoints(hdc, xc, yc, x, y, c);
     }
 
 }
 
 //using first order difference (DDA)
-void CircleMidpoint(HDC hdc, int xc, int yc, int R, COLORREF c){
+void CircleMidpoint(HDC hdc, int xc, int yc, int R, COLORREF c) {
     int x = 0;
     int y = R;
     int d = 1 - R;
     drawPoints(hdc, xc, yc, x, y, c);
 
-    while(x < y){
-        if(d < 0){
-            d += 2*x + 3;
+    while (x < y) {
+        if (d < 0) {
+            d += 2 * x + 3;
         }
-        else{
-            d += 2*x - 2*y + 5;
+        else {
+            d += 2 * x - 2 * y + 5;
             y--;
         }
         x++;
@@ -679,39 +736,39 @@ void CircleMidpoint(HDC hdc, int xc, int yc, int R, COLORREF c){
 }
 
 //using second order (fewer calculations  no multiplication only addition
-void CircleModMid(HDC hdc, int xc, int yc, int R, COLORREF c){
-    int x= 0;
+void CircleModMid(HDC hdc, int xc, int yc, int R, COLORREF c) {
+    int x = 0;
     int y = R;
     int d = 1 - R;
-    int c1 = 3, c2 = 5-(2*R);
-
-    drawPoints(hdc,xc, yc, x, y, c);
-
-    while(x< y){
-        if(d < 0){
-            d+=c1;
-            c2 +=2;
-        }
-        else{
-            d+= c2;
-            c2+=4;
-            y--;
-        }
-        x++;
-        c1+=2;
-        drawPoints(hdc, xc,yc,x,y, c);
-    }
-}
-
-void CirclePolar(HDC hdc, int xc, int yc, int R, COLORREF c){
-    int x = R;
-    int y = 0;
-    double theta = 0;
-    double d_theta = 1.0/R;
+    int c1 = 3, c2 = 5 - (2 * R);
 
     drawPoints(hdc, xc, yc, x, y, c);
 
-    while(x>y){
+    while (x < y) {
+        if (d < 0) {
+            d += c1;
+            c2 += 2;
+        }
+        else {
+            d += c2;
+            c2 += 4;
+            y--;
+        }
+        x++;
+        c1 += 2;
+        drawPoints(hdc, xc, yc, x, y, c);
+    }
+}
+
+void CirclePolar(HDC hdc, int xc, int yc, int R, COLORREF c) {
+    int x = R;
+    int y = 0;
+    double theta = 0;
+    double d_theta = 1.0 / R;
+
+    drawPoints(hdc, xc, yc, x, y, c);
+
+    while (x > y) {
         theta += d_theta;
         x = (int)round(R * cos(theta));
         y = (int)round(R * sin(theta));
@@ -719,18 +776,18 @@ void CirclePolar(HDC hdc, int xc, int yc, int R, COLORREF c){
     }
 }
 
-void CircleIterPolar(HDC hdc, int xc, int yc, int R, COLORREF c){
+void CircleIterPolar(HDC hdc, int xc, int yc, int R, COLORREF c) {
     double x = R;
     double y = 0;
-    double d_theta = 1.0/R;
+    double d_theta = 1.0 / R;
     double cosine = cos(d_theta);
     double sine = sin(d_theta);
 
     drawPoints(hdc, xc, yc, (int)round(x), (int)round(y), c);
 
-    while(x > y){
-        double x1 = x*cosine - y*sine;
-        y = x*sine + y*cosine;
+    while (x > y) {
+        double x1 = x * cosine - y * sine;
+        y = x * sine + y * cosine;
         x = x1;
         drawPoints(hdc, xc, yc, (int)round(x), (int)round(y), c);
 
@@ -739,77 +796,77 @@ void CircleIterPolar(HDC hdc, int xc, int yc, int R, COLORREF c){
 }
 
 // ── 3: Add ellipse + cardinal spline functions here ───────────────
-void EllipseDraw(HDC hdc, int xc, int yc, int rx, int ry, COLORREF c){
-    if(activeAlgorithm == "Ellipse_Direct")
+void EllipseDraw(HDC hdc, int xc, int yc, int rx, int ry, COLORREF c) {
+    if (activeAlgorithm == "Ellipse_Direct")
         EllipseDirect(hdc, xc, yc, rx, ry, c);
-    else if(activeAlgorithm == "Ellipse_Midpoint")
+    else if (activeAlgorithm == "Ellipse_Midpoint")
         EllipseMidpoint(hdc, xc, yc, rx, ry, c);
-    else if(activeAlgorithm == "Ellipse_Polar")
+    else if (activeAlgorithm == "Ellipse_Polar")
         EllipsePolar(hdc, xc, yc, rx, ry, c);
 }
 
-void ellipsePoints(HDC hdc, int xc, int yc, int x, int y, COLORREF c){
-    SetPixel(hdc, xc+x, yc+y, c);
-    SetPixel(hdc, xc-x, yc+y, c);
-    SetPixel(hdc, xc-x, yc-y, c);
-    SetPixel(hdc, xc+x, yc-y, c);
+void ellipsePoints(HDC hdc, int xc, int yc, int x, int y, COLORREF c) {
+    SetPixel(hdc, xc + x, yc + y, c);
+    SetPixel(hdc, xc - x, yc + y, c);
+    SetPixel(hdc, xc - x, yc - y, c);
+    SetPixel(hdc, xc + x, yc - y, c);
 }
 
 // x^2/a^2 + y^2/b^2 = 1  (a: half width, b:half height)
 //horizontal ellipse (x-h)^2/a^2 + (y-k)^2/b^2 = 1
 // Vertical ellipse (x-k)^2/a^2 + (y-h)^2/b^2 = 1
 //(h,K) center
-void EllipseDirect(HDC hdc, int xc, int yc, int rx, int ry, COLORREF c){
+void EllipseDirect(HDC hdc, int xc, int yc, int rx, int ry, COLORREF c) {
     //loop on x from 0 to rx, calc y
-    for (int x = 0; x <= rx; x++){
+    for (int x = 0; x <= rx; x++) {
         double y = ry * sqrt(1.0 - (x * x) / ((double)rx * rx));
         ellipsePoints(hdc, xc, yc, (int)round(x), (int)round(y), c);
     }
 
     //sweep y from 0 to ry, compute x
-    for (int y = 0; y <= ry; y++){
+    for (int y = 0; y <= ry; y++) {
         double x = rx * sqrt(1.0 - (y * y) / ((double)ry * ry));
         ellipsePoints(hdc, xc, yc, (int)round(x), (int)round(y), c);
     }
 }
 
-void EllipseMidpoint(HDC hdc, int xc, int yc, int rx, int ry, COLORREF c){
+void EllipseMidpoint(HDC hdc, int xc, int yc, int rx, int ry, COLORREF c) {
     int x = 0;
     int y = ry;
-    double d1 = (ry*ry) - (rx*rx*ry) + (0.25*rx*rx);
+    double d1 = (ry * ry) - (rx * rx * ry) + (0.25 * rx * rx);
 
     //slope < 1 curve more horizontal
-    while (2.0*ry*ry*x < 2.0*rx*rx*y){
+    while (2.0 * ry * ry * x < 2.0 * rx * rx * y) {
         ellipsePoints(hdc, xc, yc, x, y, c);
-        if(d1 <0){
+        if (d1 < 0) {
             x++;
-            d1+= 2*ry*ry*x + ry*ry;
+            d1 += 2 * ry * ry * x + ry * ry;
         }
-        else{
+        else {
             x++;
             y--;
-            d1 += 2*ry*ry*x - 2*rx*rx*y + ry*ry;
+            d1 += 2 * ry * ry * x - 2 * rx * rx * y + ry * ry;
         }
 
     }
 
-    double d2 = (ry*ry*(x+0.5)*(x+0.5)) + (rx*rx*(y-1)*(y-1)) - (rx*rx*ry*ry);
+    double d2 = (ry * ry * (x + 0.5) * (x + 0.5)) + (rx * rx * (y - 1) * (y - 1)) - (rx * rx * ry * ry);
     //slope > 1 more vertical
-    while(y >= 0){
+    while (y >= 0) {
         ellipsePoints(hdc, xc, yc, x, y, c);
-        if(d2 > 0){
+        if (d2 > 0) {
             y--;
-            d2 += rx*rx - 2*rx*rx*y;
+            d2 += rx * rx - 2 * rx * rx * y;
         }
-        else{
+        else {
             y--;
             x++;
-            d2 += 2*ry*ry*x - 2*rx*rx*y + rx*rx;
+            d2 += 2 * ry * ry * x - 2 * rx * rx * y + rx * rx;
         }
     }
 }
 
-void EllipsePolar(HDC hdc, int xc, int yc, int rx, int ry, COLORREF c){
+void EllipsePolar(HDC hdc, int xc, int yc, int rx, int ry, COLORREF c) {
     double theta = 0;
     double d_theta = 1.0 / max(rx, ry);
 
@@ -840,17 +897,17 @@ void EllipsePolar(HDC hdc, int xc, int yc, int rx, int ry, COLORREF c){
 // Fills coeff[0..3] as [t³, t², t¹, t⁰].
 void GetHermiteCoeff(double p0, double s0, double p1, double s1, double coeff[4])
 {
-    coeff[0] =  2*p0 + s0 - 2*p1 + s1;  // t³
-    coeff[1] = -3*p0 - 2*s0 + 3*p1 - s1; // t²
-    coeff[2] =  s0;                       // t¹
-    coeff[3] =  p0;                       // t⁰
+    coeff[0] = 2 * p0 + s0 - 2 * p1 + s1;  // t³
+    coeff[1] = -3 * p0 - 2 * s0 + 3 * p1 - s1; // t²
+    coeff[2] = s0;                       // t¹
+    coeff[3] = p0;                       // t⁰
 }
 
 // Draw one Hermite curve segment from (x0,y0) to (x1,y1).
 // (tx0,ty0) and (tx1,ty1) are the tangent vectors at each end.
 // numpts controls smoothness (higher = smoother but slower).
 void DrawHermiteSeg(HDC hdc, int x0, int y0, int tx0, int ty0,
-                    int x1, int y1, int tx1, int ty1, COLORREF c, int numpts)
+    int x1, int y1, int tx1, int ty1, COLORREF c, int numpts)
 {
     double cx[4], cy[4];
     GetHermiteCoeff(x0, tx0, x1, tx1, cx);
@@ -861,11 +918,11 @@ void DrawHermiteSeg(HDC hdc, int x0, int y0, int tx0, int ty0,
 
     for (int i = 1; i < numpts; i++)
     {
-        double t  = i * dt;
+        double t = i * dt;
         double t2 = t * t, t3 = t2 * t;
-        int nx = (int)round(cx[0]*t3 + cx[1]*t2 + cx[2]*t + cx[3]);
-        int ny = (int)round(cy[0]*t3 + cy[1]*t2 + cy[2]*t + cy[3]);
-    
+        int nx = (int)round(cx[0] * t3 + cx[1] * t2 + cx[2] * t + cx[3]);
+        int ny = (int)round(cy[0] * t3 + cy[1] * t2 + cy[2] * t + cy[3]);
+
         LineMidpoint(hdc, prevX, prevY, nx, ny, c);
         prevX = nx; prevY = ny;
     }
@@ -889,13 +946,13 @@ void DrawCardinalSpline(HDC hdc, POINT P[], int n, double tension, COLORREF c)
     // Draw each segment P[i-1] → P[i] for i = 2 .. n-2
     for (int i = 2; i < n - 1; i++)
     {
-        int tx1 = (int)round(c1 * (P[i+1].x - P[i-1].x));
-        int ty1 = (int)round(c1 * (P[i+1].y - P[i-1].y));
+        int tx1 = (int)round(c1 * (P[i + 1].x - P[i - 1].x));
+        int ty1 = (int)round(c1 * (P[i + 1].y - P[i - 1].y));
 
         DrawHermiteSeg(hdc,
-                       P[i-1].x, P[i-1].y, tx0, ty0,
-                       P[i].x,   P[i].y,   tx1, ty1,
-                       c);
+            P[i - 1].x, P[i - 1].y, tx0, ty0,
+            P[i].x, P[i].y, tx1, ty1,
+            c);
         tx0 = tx1;
         ty0 = ty1;
     }
@@ -917,7 +974,7 @@ void FillCircleWithLines(HDC hdc, int xc, int yc, int R, int quarter, COLORREF c
 {
     // Top quarters scan upward (smaller y), bottom scan downward
     int yStart = (quarter == 1 || quarter == 2) ? yc - R : yc;
-    int yEnd   = (quarter == 1 || quarter == 2) ? yc     : yc + R;
+    int yEnd = (quarter == 1 || quarter == 2) ? yc : yc + R;
 
     for (int y = yStart; y <= yEnd; y++)
     {
@@ -931,7 +988,7 @@ void FillCircleWithLines(HDC hdc, int xc, int yc, int R, int quarter, COLORREF c
         // Left  half (Q2, Q3): line from left boundary to center column
         int lx, rx;
         if (quarter == 1 || quarter == 4) { lx = xc;      rx = xc + dx; }
-        else                               { lx = xc - dx; rx = xc;      }
+        else { lx = xc - dx; rx = xc; }
 
         LineMidpoint(hdc, lx, y, rx, y, c);
     }
@@ -946,9 +1003,9 @@ void FillCircleWithCircles(HDC hdc, int xc, int yc, int R, int quarter, COLORREF
     switch (quarter)
     {
     case 1: tStart = -M_PI / 2.0; tEnd = 0;            break; // top-right
-    case 2: tStart =  M_PI;       tEnd = 3*M_PI / 2.0; break; // top-left
-    case 3: tStart =  M_PI / 2.0; tEnd = M_PI;         break; // bottom-left
-    default:tStart =  0;          tEnd = M_PI / 2.0;   break; // bottom-right (Q4)
+    case 2: tStart = M_PI;       tEnd = 3 * M_PI / 2.0; break; // top-left
+    case 3: tStart = M_PI / 2.0; tEnd = M_PI;         break; // bottom-left
+    default:tStart = 0;          tEnd = M_PI / 2.0;   break; // bottom-right (Q4)
     }
 
     // Draw concentric arcs at every 5-pixel radius step
@@ -963,6 +1020,194 @@ void FillCircleWithCircles(HDC hdc, int xc, int yc, int R, int quarter, COLORREF
         }
     }
 }
+// ════════════════════════════════════════════════════════════════════════════
+// FILL SQUARE WITH HERMITE CURVES
+//
+// Fills the bounding rectangle [x1,y1]-[x2,y2] with vertical cubic Hermite
+// curves, exactly as the standalone version in document 2.
+//
+// Each curve runs from (xCol, top) to (xCol, bottom) with a horizontal
+// tension tangent — this keeps every curve perfectly straight vertically
+// (tangent=(tension,0) means "pull horizontally by `tension` pixels with
+//  zero vertical component"), producing solid vertical fill lines.
+//
+// numCurves controls fill density; tension controls the S-bend width.
+// Both are tunable constants at the top of the function.
+//
+// Params saved/loaded: [x1, y1, x2, y2]
+// ════════════════════════════════════════════════════════════════════════════
+void FillSquareHermite(HDC hdc, int x1, int y1, int x2, int y2, COLORREF c)
+{
+    // ── Hermite basis matrix (row-major) ─────────────────────────────────
+    // H maps [P0, T0, P1, T1] -> [a, b, c, d] coefficients
+    // x(t) = a + b*t + c*t^2 + d*t^3  (note: H is stored column-major here
+    // matching the standalone code; mulHG produces the same result)
+    const double H[4][4] = {
+        { 1,  0,  0,  0},
+        { 0,  1,  0,  0},
+        {-3, -2,  3, -1},
+        { 2,  1, -2,  1}
+    };
+
+    // Tunables
+    const int    numCurves = 80;    // number of vertical Hermite lines
+    const double tension = 100.0; // horizontal tangent magnitude
+
+    int left = min(x1, x2);
+    int right = max(x1, x2);
+    int top = min(y1, y2);
+    int bottom = max(y1, y2);
+    int width = right - left;
+    if (width <= 0 || bottom - top <= 0) return;
+
+    for (int i = 0; i < numCurves; i++)
+    {
+        // x-position of this vertical curve
+        double xCol = left + ((double)i / (numCurves - 1)) * width;
+
+        // Geometry matrix G: [P0 | T0 | P1 | T1] as 4×2
+        // P0 = top point, P1 = bottom point
+        // T0 = T1 = (tension, 0) — purely horizontal tangent
+        double G[4][2] = {
+            {xCol,    (double)top},
+            {tension, 0.0},
+            {xCol,    (double)bottom},
+            {-tension,0.0}
+        };
+
+        // C = H * G  (4×2 coefficient matrix)
+        double C[4][2] = {};
+        for (int r = 0; r < 4; r++)
+            for (int col = 0; col < 2; col++)
+                for (int k = 0; k < 4; k++)
+                    C[r][col] += H[r][k] * G[k][col];
+
+        // Evaluate the curve at 1000 uniform t-steps and plot each pixel
+        for (double t = 0.0; t <= 1.0; t += 0.001)
+        {
+            double V[4] = { 1.0, t, t * t, t * t * t };
+            double px = 0, py = 0;
+            for (int k = 0; k < 4; k++) { px += V[k] * C[k][0]; py += V[k] * C[k][1]; }
+            SetPixel(hdc, (int)round(px), (int)round(py), c);
+        }
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// FILL RECTANGLE WITH BEZIER CURVES
+//
+// Fills [x1,y1]-[x2,y2] by stacking one horizontal cubic Bezier curve per
+// row, exactly as the standalone Bezier version provided.
+//
+// Because all four control points lie on the same y-row and are evenly
+// spaced along x, the curve degenerates to a perfectly straight horizontal
+// line — giving a solid, efficient fill with pixel-perfect coverage.
+//
+// The border of the rectangle is also drawn in black (matching the original).
+//
+// Params saved/loaded: [x1, y1, x2, y2]
+// ════════════════════════════════════════════════════════════════════════════
+
+// Evaluate a single cubic Bezier point at parameter t.
+// Uses the standard explicit form: B(t) = (1-t)^3*P0 + 3t(1-t)^2*P1
+//                                        + 3t^2(1-t)*P2 + t^3*P3
+static void BezierPoint(double p0x, double p0y,
+    double p1x, double p1y,
+    double p2x, double p2y,
+    double p3x, double p3y,
+    double t, double& outX, double& outY)
+{
+    double u = 1.0 - t;
+    double u2 = u * u, u3 = u2 * u;
+    double t2 = t * t, t3 = t2 * t;
+    outX = u3 * p0x + 3 * t * u2 * p1x + 3 * t2 * u * p2x + t3 * p3x;
+    outY = u3 * p0y + 3 * t * u2 * p1y + 3 * t2 * u * p2y + t3 * p3y;
+}
+
+void FillRectangleBezier(HDC hdc, int x1, int y1, int x2, int y2, COLORREF c)
+{
+    int left = min(x1, x2);
+    int right = max(x1, x2);
+    int top = min(y1, y2);
+    int bottom = max(y1, y2);
+    int width = right - left;
+    int height = bottom - top;
+    if (width <= 0 || height <= 0) return;
+
+    // Draw the rectangle border in the chosen color
+    for (int x = left; x <= right; x++) { SetPixel(hdc, x, top, c); SetPixel(hdc, x, bottom, c); }
+    for (int y = top; y <= bottom; y++) { SetPixel(hdc, left, y, c); SetPixel(hdc, right, y, c); }
+
+    // Fill: one horizontal Bezier per row
+    // Control points all on the same row → curve is a straight horizontal line
+    for (int row = top; row <= bottom; row++)
+    {
+        double P0x = left, P0y = row;
+        double P1x = left + width / 3.0, P1y = row;
+        double P2x = left + 2.0 * width / 3, P2y = row;
+        double P3x = right, P3y = row;
+
+        for (double t = 0.0; t <= 1.0; t += 0.0001)
+        {
+            double px, py;
+            BezierPoint(P0x, P0y, P1x, P1y, P2x, P2y, P3x, P3y, t, px, py);
+            SetPixel(hdc, (int)round(px), (int)round(py), c);
+        }
+    }
+}
+// ════════════════════════════════════════════════════════════════════════════
+// FLOOD FILL
+// ════════════════════════════════════════════════════════════════════════════
+void DrawPolygon(HDC hdc)
+{
+    for (int i = 0; i < 5; i++)
+    {
+        int next = (i + 1) % 5;
+        LineMidpoint(hdc, pts[i].x, pts[i].y, pts[next].x, pts[next].y, RGB(0, 0, 0));
+    }
+}
+
+void RecursiveFloodFill(HDC hdc, int x, int y, COLORREF bc, COLORREF fc)
+{
+    COLORREF c = GetPixel(hdc, x, y);
+    if (c == bc || c == fc) return;
+    SetPixel(hdc, x, y, fc);
+    RecursiveFloodFill(hdc, x + 1, y, bc, fc);
+    RecursiveFloodFill(hdc, x - 1, y, bc, fc);
+    RecursiveFloodFill(hdc, x, y + 1, bc, fc);
+    RecursiveFloodFill(hdc, x, y - 1, bc, fc);
+}
+
+void NonRecursiveFloodFill(HDC hdc, int x, int y, COLORREF bc, COLORREF fc)
+{
+    stack<Point> s;
+    s.push(Point(x, y));
+    while (!s.empty())
+    {
+        Point p = s.top(); s.pop();
+        COLORREF c = GetPixel(hdc, p.x, p.y);
+        if (c == bc || c == fc) continue;
+        SetPixel(hdc, p.x, p.y, fc);
+        s.push(Point(p.x + 1, p.y));
+        s.push(Point(p.x - 1, p.y));
+        s.push(Point(p.x, p.y + 1));
+        s.push(Point(p.x, p.y - 1));
+    }
+}
+
+bool IsPointInsidePolygon(int x, int y)
+{
+    bool inside = false;
+    for (int i = 0, j = 4; i < 5; j = i++)
+    {
+        int xi = pts[i].x, yi = pts[i].y;
+        int xj = pts[j].x, yj = pts[j].y;
+        bool intersect = ((yi > y) != (yj > y)) &&
+            (x < (xj - xi) * (y - yi) / (double)(yj - yi) + xi);
+        if (intersect) inside = !inside;
+    }
+    return inside;
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // BONUS: SMILEY FACES
@@ -973,7 +1218,7 @@ void FillCircleWithCircles(HDC hdc, int xc, int yc, int R, int quarter, COLORREF
 
 
 void DrawArc(HDC hdc, int cx, int cy, int rx, int ry,
-             double tStart, double tEnd, COLORREF c)
+    double tStart, double tEnd, COLORREF c)
 {
     double dtheta = 1.0 / max(rx, ry); // -> from polar circle lecture
     int prevX = cx + (int)round(rx * cos(tStart));
@@ -997,16 +1242,16 @@ void DrawSmileyHappy(HDC hdc, int cx, int cy, int R, COLORREF c)
     CircleMidpoint(hdc, cx, cy, R, c);
 
     // Eyes (two small circles, offset up and to each side)
-    CircleMidpoint(hdc, cx - R/3, cy - R/4, R/8, c);
-    CircleMidpoint(hdc, cx + R/3, cy - R/4, R/8, c);
+    CircleMidpoint(hdc, cx - R / 3, cy - R / 4, R / 8, c);
+    CircleMidpoint(hdc, cx + R / 3, cy - R / 4, R / 8, c);
 
     // Nose: two short diagonal lines meeting at a point
-    LineMidpoint(hdc, cx,cy,cx - R/10, cy + R/6, c);
-    LineMidpoint(hdc, cx,cy,cx + R/10, cy + R/6, c);
+    LineMidpoint(hdc, cx, cy, cx - R / 10, cy + R / 6, c);
+    LineMidpoint(hdc, cx, cy, cx + R / 10, cy + R / 6, c);
 
     // Smile: bottom half of ellipse centered below face center.
     // θ 0→π sweeps: right-corner → bottom-middle → left-corner (happy U curve).
-    DrawArc(hdc, cx, cy + R/4, R/2, R/4, 0, M_PI, c);
+    DrawArc(hdc, cx, cy + R / 4, R / 2, R / 4, 0, M_PI, c);
 }
 
 // Sad smiley face.
@@ -1018,12 +1263,12 @@ void DrawSmileySad(HDC hdc, int cx, int cy, int R, COLORREF c)
     CircleMidpoint(hdc, cx, cy, R, c);
 
     // Eyes
-    CircleMidpoint(hdc, cx - R/3, cy - R/4, R/8, c);
-    CircleMidpoint(hdc, cx + R/3, cy - R/4, R/8, c);
+    CircleMidpoint(hdc, cx - R / 3, cy - R / 4, R / 8, c);
+    CircleMidpoint(hdc, cx + R / 3, cy - R / 4, R / 8, c);
 
     // Nose
-    LineMidpoint(hdc, cx,cy,cx - R/10, cy + R/6, c);
-    LineMidpoint(hdc, cx,cy,cx + R/10, cy + R/6, c);
+    LineMidpoint(hdc, cx, cy, cx - R / 10, cy + R / 6, c);
+    LineMidpoint(hdc, cx, cy, cx + R / 10, cy + R / 6, c);
 
     // Frown: top half of ellipse.
     // Center moved to cy + R/2 so the arch top sits at cy + R/3,
@@ -1042,18 +1287,22 @@ void DrawSmileySad(HDC hdc, int cx, int cy, int R, COLORREF c)
 // wParam   : extra info (for WM_COMMAND: which menu item was clicked)
 // lParam   : extra info (for WM_LBUTTONDOWN: mouse x/y packed together)
 // ════════════════════════════════════════════════════════════════════════════
+
+#define BTN_RECURSIVE     1
+#define BTN_NONRECURSIVE  2
+#define BTN_RESET         3
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     switch (msg)
     {
-    // ── WM_COMMAND: fires when any menu item is clicked ───────────────
-    // LOWORD(wParam) gives the ID of the clicked item.
-    // Match it against your #define IDs and call the right function.
+        // ── WM_COMMAND: fires when any menu item is clicked ───────────────
+        // LOWORD(wParam) gives the ID of the clicked item.
+        // Match it against your #define IDs and call the right function.
     case WM_COMMAND:
     {
         switch (LOWORD(wParam))
         {
-        // ── File ──────────────────────────────────────────────────
+            // ── File ──────────────────────────────────────────────────
         case ID_FILE_CLEAR:
             ClearScreen(hwnd);
             break;
@@ -1064,7 +1313,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             LoadFromFile(hwnd);
             break;
 
-        // ── Preferences ───────────────────────────────────────────
+            // ── Preferences ───────────────────────────────────────────
         case ID_PREF_WHITEBG:
         {
             // Toggle background between white and light gray.
@@ -1107,8 +1356,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             {
                 currentColor = cc.rgbResult;
                 cout << "[PREF] Color: R=" << (int)GetRValue(currentColor)
-                     << " G=" << (int)GetGValue(currentColor)
-                     << " B=" << (int)GetBValue(currentColor) << "\n";
+                    << " G=" << (int)GetGValue(currentColor)
+                    << " B=" << (int)GetBValue(currentColor) << "\n";
             }
             break;
         }
@@ -1133,7 +1382,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             cout << "[LINE] Parametric selected. Click start point.\n";
             break;
 
-        //Circle
+            //Circle
         case ID_CIRCLE_POLAR:
             activeAlgorithm = "POLAR";
             circleWaitingForRadius = false;
@@ -1160,7 +1409,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             cout << "[CIRCLE] Modified midpoint selected. Click center.\n";
             break;
 
-        //ellipse
+            //ellipse
         case ID_ELLIPSE_DIRECT:
             activeAlgorithm = "Ellipse_Direct";
             ellipseWaiting = false;
@@ -1177,70 +1426,101 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             cout << "[ELLIPSE] Polar selected. Click center.\n";
             break;
 
-        // ── Cardinal Spline  ────────────────────────────
+            // ── Cardinal Spline  ────────────────────────────
         case ID_CURVE_CARDINAL:
             activeAlgorithm = "CURVE_CARDINAL";
             curveCollecting = false;
             curvePoints.clear();
             // Ask tension in a background thread so the GUI stays live
             thread([]()
-            {
-                cout << "[CURVE] Cardinal Spline selected.\n";
-                cout << "[CURVE] Enter tension (0.0 = smooth, 1.0 = straight): ";
-                cin >> curveTension;
-                if (curveTension < 0) curveTension = 0;
-                if (curveTension > 1) curveTension = 1;
-                curveCollecting = true;
-                cout << "[CURVE] Click at least 4 points on the canvas.\n";
-                cout << "[CURVE] Right-click (or press Enter here) when done.\n";
-            }).detach();
+                {
+                    cout << "[CURVE] Cardinal Spline selected.\n";
+                    cout << "[CURVE] Enter tension (0.0 = smooth, 1.0 = straight): ";
+                    cin >> curveTension;
+                    if (curveTension < 0) curveTension = 0;
+                    if (curveTension > 1) curveTension = 1;
+                    curveCollecting = true;
+                    cout << "[CURVE] Click at least 4 points on the canvas.\n";
+                    cout << "[CURVE] Right-click (or press Enter here) when done.\n";
+                }).detach();
             break;
 
-        // ── Circle fill ─────────────────────────────────
+            // ── Circle fill ─────────────────────────────────
         case ID_FILL_CIRCLE_LINES:
             activeAlgorithm = "FILL_CIRCLE_LINES";
             fillWaitingCenter = false;
-            fillWaitingEdge   = false;
+            fillWaitingEdge = false;
             thread([]()
-            {
-                cout << "[FILL] Fill Circle with Lines.\n";
-                cout << "[FILL] Enter quarter (1=top-right, 2=top-left, "
+                {
+                    cout << "[FILL] Fill Circle with Lines.\n";
+                    cout << "[FILL] Enter quarter (1=top-right, 2=top-left, "
                         "3=bottom-left, 4=bottom-right): ";
-                cin >> fillQuarter;
-                if (fillQuarter < 1 || fillQuarter > 4) fillQuarter = 1;
-                fillWaitingCenter = true;
-                cout << "[FILL] Click circle center.\n";
-            }).detach();
+                    cin >> fillQuarter;
+                    if (fillQuarter < 1 || fillQuarter > 4) fillQuarter = 1;
+                    fillWaitingCenter = true;
+                    cout << "[FILL] Click circle center.\n";
+                }).detach();
             break;
 
         case ID_FILL_CIRCLE_CIRCLES:
             activeAlgorithm = "FILL_CIRCLE_CIRCLES";
             fillWaitingCenter = false;
-            fillWaitingEdge   = false;
+            fillWaitingEdge = false;
             thread([]()
-            {
-                cout << "[FILL] Fill Circle with Circles.\n";
-                cout << "[FILL] Enter quarter (1=top-right, 2=top-left, "
+                {
+                    cout << "[FILL] Fill Circle with Circles.\n";
+                    cout << "[FILL] Enter quarter (1=top-right, 2=top-left, "
                         "3=bottom-left, 4=bottom-right): ";
-                cin >> fillQuarter;
-                if (fillQuarter < 1 || fillQuarter > 4) fillQuarter = 1;
-                fillWaitingCenter = true;
-                cout << "[FILL] Click circle center.\n";
-            }).detach();
+                    cin >> fillQuarter;
+                    if (fillQuarter < 1 || fillQuarter > 4) fillQuarter = 1;
+                    fillWaitingCenter = true;
+                    cout << "[FILL] Click circle center.\n";
+                }).detach();
+            break;
+            // ── Fill Square with Hermite ──────────────────────────────────────
+        case ID_FILL_SQUARE_HERMIT:
+            activeAlgorithm = "FILL_SQUARE_HERMIT";
+            hermiteWaitingSecond = false;
+            cout << "[FILL] Square with Hermite selected.\n";
+            cout << "[FILL] Click first corner.\n";
             break;
 
-        // ── Smiley faces ───────────────────────
+            // ── Fill Rectangle with Bezier ────────────────────────────────────
+        case ID_FILL_RECT_BEZIER:
+            activeAlgorithm = "FILL_RECT_BEZIER";
+            bezierRectWaitingSecond = false;
+            cout << "[FILL] Rectangle with Bezier selected.\n";
+            cout << "[FILL] Click first corner.\n";
+            break;
+            //floodfill
+        case ID_FILL_FLOOD_REC:
+            activeAlgorithm = "recursive";
+            useRecursive = true;
+            pointCount = 0; polygonDrawn = false;
+            SetWindowText(hwnd, L"Recursive Flood Fill — Click 5 points for polygon");
+            cout << "[FLOOD] Recursive Flood Fill selected. Click 5 points.\n";
+            break;
+
+        case ID_FILL_FLOOD_NONREC:
+            activeAlgorithm = "non_recursive";
+            useRecursive = false;
+            pointCount = 0; polygonDrawn = false;
+            SetWindowText(hwnd, L"Non-Recursive Flood Fill — Click 5 points for polygon");
+            cout << "[FLOOD] Non-Recursive Flood Fill selected. Click 5 points.\n";
+            break;
+  
+            // ── Smiley faces ───────────────────────
         case ID_BONUS_HAPPY:
-            activeAlgorithm    = "SMILEY_HAPPY";
+            activeAlgorithm = "SMILEY_HAPPY";
             smileyWaitingCenter = true;
-            smileyWaitingEdge   = false;
+            smileyWaitingEdge = false;
             cout << "[BONUS] Happy Smiley selected. Click face center.\n";
             break;
 
         case ID_BONUS_SAD:
-            activeAlgorithm    = "SMILEY_SAD";
+            activeAlgorithm = "SMILEY_SAD";
             smileyWaitingCenter = true;
-            smileyWaitingEdge   = false;
+            smileyWaitingEdge = false;
             cout << "[BONUS] Sad Smiley selected. Click face center.\n";
             break;
 
@@ -1282,12 +1562,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 Shape s;
                 s.type = "LINE_" + activeAlgorithm;
                 s.color = currentColor;
-                s.params = {x1Line, y1Line, mx, my};
+                s.params = { x1Line, y1Line, mx, my };
                 shapes.push_back(s);
 
                 cout << "[LINE] Drew " << activeAlgorithm
-                     << " from (" << x1Line << "," << y1Line
-                     << ") to (" << mx << "," << my << ")\n";
+                    << " from (" << x1Line << "," << y1Line
+                    << ") to (" << mx << "," << my << ")\n";
                 waitingForSecondClick = false;
             }
             return 0;
@@ -1295,43 +1575,45 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 
         //Circle
-         if (activeAlgorithm == "POLAR" || activeAlgorithm == "Iterative_POLAR" || activeAlgorithm == "DIRECT" ||
-             activeAlgorithm == "MID" || activeAlgorithm == "Modified_Midpoint"){
+        if (activeAlgorithm == "POLAR" || activeAlgorithm == "Iterative_POLAR" || activeAlgorithm == "DIRECT" ||
+            activeAlgorithm == "MID" || activeAlgorithm == "Modified_Midpoint") {
 
-             if (!circleWaitingForRadius) {
-                 circleCX = mx; circleCY = my;
-                 circleWaitingForRadius = true;
-                 cout << "[CIRCLE] Center set. Click edge point.\n";
-             } else {
-                 int r = (int)sqrt(pow(mx-circleCX,2) + pow(my-circleCY,2));
-                 HDC hdc = GetDC(hwnd);
-                 CircleDraw(hdc, circleCX, circleCY, r, currentColor);
-                 ReleaseDC(hwnd, hdc);
-                 Shape s;
-                 s.type = "CIRCLE_";
-                 s.color = currentColor;
-                 s.params = { circleCX, circleCY, r };
-                 shapes.push_back(s);
+            if (!circleWaitingForRadius) {
+                circleCX = mx; circleCY = my;
+                circleWaitingForRadius = true;
+                cout << "[CIRCLE] Center set. Click edge point.\n";
+            }
+            else {
+                int r = (int)sqrt(pow(mx - circleCX, 2) + pow(my - circleCY, 2));
+                HDC hdc = GetDC(hwnd);
+                CircleDraw(hdc, circleCX, circleCY, r, currentColor);
+                ReleaseDC(hwnd, hdc);
+                Shape s;
+                s.type = "CIRCLE_";
+                s.color = currentColor;
+                s.params = { circleCX, circleCY, r };
+                shapes.push_back(s);
 
-                 cout << "[Circle] Drew " << activeAlgorithm
-                      << " center=(" << circleCX << "," << circleCY
-                      << ") r=" << r << "\n";
-                 circleWaitingForRadius = false;
-             }
-             return 0;
-         }
+                cout << "[Circle] Drew " << activeAlgorithm
+                    << " center=(" << circleCX << "," << circleCY
+                    << ") r=" << r << "\n";
+                circleWaitingForRadius = false;
+            }
+            return 0;
+        }
 
         // ── 3: Add ellipse click handling here ─────────────────
         // Ellipses need 2 clicks: center, then corner of bounding box.
         // rx = abs(mx - cx),  ry = abs(my - cy)
-        if(activeAlgorithm == "Ellipse_Direct" || activeAlgorithm == "Ellipse_Midpoint" ||
-            activeAlgorithm == "Ellipse_Polar"){
+        if (activeAlgorithm == "Ellipse_Direct" || activeAlgorithm == "Ellipse_Midpoint" ||
+            activeAlgorithm == "Ellipse_Polar") {
 
             if (!ellipseWaiting) {
                 ellipseCX = mx; ellipseCY = my;
                 ellipseWaiting = true;
                 cout << "[Ellipse] Center set. Click edge point.\n";
-            }else{
+            }
+            else {
                 int rx = abs(mx - ellipseCX);
                 int ry = abs(my - ellipseCY);
 
@@ -1342,11 +1624,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 Shape s;
                 s.type = activeAlgorithm;
                 s.color = currentColor;
-                s.params = {ellipseCX, ellipseCY, rx, ry};
+                s.params = { ellipseCX, ellipseCY, rx, ry };
                 shapes.push_back(s);
                 cout << "[Ellipse] Drew " << activeAlgorithm
-                     << " center=(" << ellipseCX << "," << ellipseCY
-                     << ") rx=" << rx << " ry=" << ry << "\n";
+                    << " center=(" << ellipseCX << "," << ellipseCY
+                    << ") rx=" << rx << " ry=" << ry << "\n";
 
                 ellipseWaiting = false;
             }
@@ -1359,7 +1641,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             POINT pt; pt.x = mx; pt.y = my;
             curvePoints.push_back(pt);
             cout << "[CURVE] Point " << curvePoints.size()
-                 << " added at (" << mx << "," << my << ").\n";
+                << " added at (" << mx << "," << my << ").\n";
 
             // Preview: mark the clicked point
             HDC hdc = GetDC(hwnd);
@@ -1370,7 +1652,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
         // ── Circle fill click handling  ─────────────────────
         if ((activeAlgorithm == "FILL_CIRCLE_LINES" ||
-             activeAlgorithm == "FILL_CIRCLE_CIRCLES") && fillWaitingCenter)
+            activeAlgorithm == "FILL_CIRCLE_CIRCLES") && fillWaitingCenter)
         {
             if (!fillWaitingEdge)
             {
@@ -1378,13 +1660,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 fillCX = mx; fillCY = my;
                 fillWaitingEdge = true;
                 cout << "[FILL] Center set at (" << mx << "," << my
-                     << "). Click edge point to define radius.\n";
+                    << "). Click edge point to define radius.\n";
             }
             else
             {
                 // Second click: compute radius and draw the fill
                 int dx = mx - fillCX, dy = my - fillCY;
-                int R  = (int)round(sqrt((double)(dx*dx + dy*dy)));
+                int R = (int)round(sqrt((double)(dx * dx + dy * dy)));
 
                 HDC hdc = GetDC(hwnd);
                 if (activeAlgorithm == "FILL_CIRCLE_LINES")
@@ -1395,24 +1677,132 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
                 // Save for redraw
                 Shape s;
-                s.type   = activeAlgorithm;
-                s.color  = currentColor;
+                s.type = activeAlgorithm;
+                s.color = currentColor;
                 s.params = { fillCX, fillCY, R, fillQuarter };
                 shapes.push_back(s);
 
                 cout << "[FILL] Drew " << activeAlgorithm
-                     << " center=(" << fillCX << "," << fillCY
-                     << ") R=" << R << " Q=" << fillQuarter << "\n";
+                    << " center=(" << fillCX << "," << fillCY
+                    << ") R=" << R << " Q=" << fillQuarter << "\n";
 
                 fillWaitingCenter = false;
-                fillWaitingEdge   = false;
+                fillWaitingEdge = false;
+            }
+            return 0;
+        }
+        // ── Fill Square with Hermite ───────────────────────────────────────
+        // Click 1: store first corner.
+        // Click 2: draw filled rectangle, save shape.
+        if (activeAlgorithm == "FILL_SQUARE_HERMIT")
+        {
+            if (!hermiteWaitingSecond)
+            {
+                hermiteX1 = mx; hermiteY1 = my;
+                hermiteWaitingSecond = true;
+                cout << "[FILL] First corner set at (" << mx << "," << my
+                    << "). Click opposite corner.\n";
+            }
+            else
+            {
+                HDC hdc = GetDC(hwnd);
+                FillSquareHermite(hdc, hermiteX1, hermiteY1, mx, my, currentColor);
+                ReleaseDC(hwnd, hdc);
+                Shape s;
+                s.type = "FILL_SQUARE_HERMIT";
+                s.color = currentColor;
+                s.params = { hermiteX1, hermiteY1, mx, my };
+                shapes.push_back(s);
+                cout << "[FILL] Drew Hermite square from ("
+                    << hermiteX1 << "," << hermiteY1 << ") to ("
+                    << mx << "," << my << ")\n";
+                hermiteWaitingSecond = false;
             }
             return 0;
         }
 
+        // ── Fill Rectangle with Bezier ─────────────────────────────────────
+        // Click 1: store first corner.
+        // Click 2: draw filled rectangle with border, save shape.
+        if (activeAlgorithm == "FILL_RECT_BEZIER")
+        {
+            if (!bezierRectWaitingSecond)
+            {
+                bezierX1 = mx; bezierY1 = my;
+                bezierRectWaitingSecond = true;
+                cout << "[FILL] First corner set at (" << mx << "," << my
+                    << "). Click opposite corner.\n";
+            }
+            else
+            {
+                HDC hdc = GetDC(hwnd);
+                FillRectangleBezier(hdc, bezierX1, bezierY1, mx, my, currentColor);
+                ReleaseDC(hwnd, hdc);
+                Shape s;
+                s.type = "FILL_RECT_BEZIER";
+                s.color = currentColor;
+                s.params = { bezierX1, bezierY1, mx, my };
+                shapes.push_back(s);
+                cout << "[FILL] Drew Bezier rectangle from ("
+                    << bezierX1 << "," << bezierY1 << ") to ("
+                    << mx << "," << my << ")\n";
+                bezierRectWaitingSecond = false;
+            }
+            return 0;
+        }
+            // ── Flood Fill ─────────────────────────────────────────────────
+         if (activeAlgorithm == "recursive" ||
+                activeAlgorithm == "non_recursive")
+            {
+                HDC hdc = GetDC(hwnd);
+
+                if (!polygonDrawn)
+                {
+                    pts[pointCount++] = { mx, my };
+                    SetPixel(hdc, mx, my, RGB(255, 0, 0));
+                    SetPixel(hdc, mx + 1, my, RGB(255, 0, 0));
+                    SetPixel(hdc, mx, my + 1, RGB(255, 0, 0));
+                    SetPixel(hdc, mx + 1, my + 1, RGB(255, 0, 0));
+                    cout << "[FLOOD] Point " << pointCount << " added.\n";
+
+                    if (pointCount == 5)
+                    {
+                        DrawPolygon(hdc);
+                        polygonDrawn = true;
+                        cout << "[FLOOD] Polygon complete. Click INSIDE to fill.\n";
+                    }
+                }
+                else
+                {
+                    if (IsPointInsidePolygon(mx, my))
+                    {
+                        COLORREF bc = RGB(0, 0, 0), fc = currentColor;
+                        if (activeAlgorithm == "recursive")
+                        {
+                            RecursiveFloodFill(hdc, mx, my, bc, fc);
+                            cout << "[FLOOD] Recursive fill done.\n";
+                        }
+                        else
+                        {
+                            NonRecursiveFloodFill(hdc, mx, my, bc, fc);
+                            cout << "[FLOOD] Non-recursive fill done.\n";
+                        }
+                    }
+                    else
+                    {
+                        MessageBox(hwnd, L"Click INSIDE the polygon!",
+                            L"Outside Polygon", MB_OK | MB_ICONWARNING);
+                    }
+                }
+
+                ReleaseDC(hwnd, hdc);
+                return 0;
+         }
+           
+
         // ── Smiley face click handling ─────────────────────
         if ((activeAlgorithm == "SMILEY_HAPPY" || activeAlgorithm == "SMILEY_SAD")
-             && smileyWaitingCenter)
+            && smileyWaitingCenter)
         {
             if (!smileyWaitingEdge)
             {
@@ -1425,29 +1815,29 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             {
                 // Second click: radius from distance
                 int dx = mx - smileyCX, dy = my - smileyCY;
-                int R  = (int)round(sqrt((double)(dx*dx + dy*dy)));
+                int R = (int)round(sqrt((double)(dx * dx + dy * dy)));
                 if (R < 10) R = 10; // minimum sensible size
 
                 HDC hdc = GetDC(hwnd);
                 if (activeAlgorithm == "SMILEY_HAPPY")
                     DrawSmileyHappy(hdc, smileyCX, smileyCY, R, currentColor);
                 else
-                    DrawSmileySad  (hdc, smileyCX, smileyCY, R, currentColor);
+                    DrawSmileySad(hdc, smileyCX, smileyCY, R, currentColor);
                 ReleaseDC(hwnd, hdc);
 
                 // Save for redraw
                 Shape s;
-                s.type   = activeAlgorithm;
-                s.color  = currentColor;
+                s.type = activeAlgorithm;
+                s.color = currentColor;
                 s.params = { smileyCX, smileyCY, R };
                 shapes.push_back(s);
 
                 cout << "[BONUS] Drew " << activeAlgorithm
-                     << " at (" << smileyCX << "," << smileyCY
-                     << ") R=" << R << "\n";
+                    << " at (" << smileyCX << "," << smileyCY
+                    << ") R=" << R << "\n";
 
                 smileyWaitingCenter = false;
-                smileyWaitingEdge   = false;
+                smileyWaitingEdge = false;
             }
             return 0;
         }
@@ -1467,7 +1857,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             if (n < 4)
             {
                 cout << "[CURVE] Need at least 4 points (have " << n
-                     << "). Keep clicking.\n";
+                    << "). Keep clicking.\n";
             }
             else
             {
@@ -1477,7 +1867,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
                 // Save: params = [tension*1000, n, x0,y0, x1,y1, ...]
                 Shape s;
-                s.type  = "CURVE_CARDINAL";
+                s.type = "CURVE_CARDINAL";
                 s.color = currentColor;
                 s.params.push_back((int)(curveTension * 1000));
                 s.params.push_back(n);
@@ -1489,7 +1879,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 shapes.push_back(s);
 
                 cout << "[CURVE] Cardinal Spline drawn through "
-                     << (n - 2) << " points (tension=" << curveTension << ").\n";
+                    << (n - 2) << " points (tension=" << curveTension << ").\n";
                 curveCollecting = false;
                 curvePoints.clear();
             }
