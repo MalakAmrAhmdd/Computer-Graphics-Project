@@ -75,7 +75,7 @@ struct Shape
 {
     string type;
     vector<int> params;
-    COLORREF color;
+    COLORREF color{};
 };
 
 // ── shapes vector: ALL drawn shapes live here ────────────────────────────
@@ -108,12 +108,16 @@ string activeAlgorithm = "";
 bool waitingForSecondClick = false;
 int x1Line = 0, y1Line = 0;
 
-// ── 2: Add your click-state variables here ────────────────────────
+//circle click-state variables here
+bool circleWaitingForRadius = false;
+int circleCX = 0, circleCY = 0;
 
- bool circleWaitingForRadius = false;
- int circleCX = 0, circleCY = 0;
+//ellipse click-state
+bool ellipseWaiting = false;
+int ellipseCX = 0, ellipseCY = 0;
 
-// ── 3: Add ellipse/curve click-state variables here ───────────────
+
+// ── 3: Add curve click-state variables here ───────────────
 
 // ── 4: Add filling click-state variables here ─────────────────────
 
@@ -136,13 +140,17 @@ void LineParametric(HDC hdc, int x1, int y1, int x2, int y2, COLORREF c);
 void DrawLine(HDC hdc, int x1, int y1, int x2, int y2, COLORREF c);
 
 void CircleDirect(HDC hdc, int xc, int yc, int r, COLORREF c);
-void CirclePolar(HDC hdc, int cx, int cy, int r, COLORREF c);
-void CircleIterPolar(HDC hdc, int cx, int cy, int r, COLORREF c);
+void CirclePolar(HDC hdc, int xc, int yc, int r, COLORREF c);
+void CircleIterPolar(HDC hdc, int xc, int yc, int r, COLORREF c);
 void CircleMidpoint(HDC hdc, int xc, int yc, int r, COLORREF c);
-void CircleModMid(HDC hdc, int cx, int cy, int r, COLORREF c);
+void CircleModMid(HDC hdc, int xc, int yc, int r, COLORREF c);
 void CircleDraw(HDC hdc, int cx, int cy, int r, COLORREF c);
 
 // ── 3: Declare ellipse + curve functions here ─────────────────────
+void EllipseDirect(HDC hdc, int xc, int yc, int x, int y, COLORREF c);
+void EllipseMidpoint(HDC hdc, int xc, int yc, int x, int y, COLORREF c);
+void EllipsePolar(HDC hdc, int xc, int yc, int x, int y, COLORREF c);
+void EllipseDraw(HDC hdc, int xc, int yc, int x, int y, COLORREF c);
 
 // ── 4: Declare filling functions here ─────────────────────────────
 
@@ -245,10 +253,14 @@ HMENU CreateAppMenu()
      AppendMenu(circleMenu, MF_STRING, ID_CIRCLE_MIDPOINT,     L"MID");
      AppendMenu(circleMenu, MF_STRING, ID_CIRCLE_MOD_MIDPOINT, L"Modified Midpoint");
      AppendMenu(menuBar, MF_POPUP, (UINT_PTR)circleMenu, L"Circles");
-//    AppendMenu(menuBar, MF_POPUP, (UINT_PTR)CreatePopupMenu(), L"Circles"); // remove this line when done
 
     // ── 3: Replace placeholders with real Ellipse + Curves menus ──
-    AppendMenu(menuBar, MF_POPUP, (UINT_PTR)CreatePopupMenu(), L"Ellipse"); // replace when done
+    HMENU ellipseMenu = CreatePopupMenu();
+    AppendMenu(ellipseMenu, MF_STRING, ID_ELLIPSE_DIRECT,       L"Direct");
+    AppendMenu(ellipseMenu, MF_STRING, ID_ELLIPSE_MID,       L"Midpoint");
+    AppendMenu(ellipseMenu, MF_STRING, ID_ELLIPSE_POLAR,       L"Polar");
+    AppendMenu(menuBar, MF_POPUP, (UINT_PTR)ellipseMenu, L"Ellipse");
+
     AppendMenu(menuBar, MF_POPUP, (UINT_PTR)CreatePopupMenu(), L"Curves");  // replace when done
 
     // ── 4: Replace placeholder with real Filling menu ─────────────
@@ -374,16 +386,29 @@ void RedrawShapes(HDC hdc)
                 LineParametric(hdc, s.params[0], s.params[1], s.params[2], s.params[3], s.color);
         }
 
-        // ── 2: Add circle redraw cases here ───────────────────────
-         else if (s.type == "CIRCLE_DIRECT"       && s.params.size() >= 3) CircleDirect    (hdc, s.params[0], s.params[1], s.params[2], s.color);
-//         else if (s.type == "CIRCLE_POLAR"        && s.params.size() >= 3) CirclePolar     (hdc, s.params[0], s.params[1], s.params[2], s.color);
-//         else if (s.type == "CIRCLE_ITER_POLAR"   && s.params.size() >= 3) CircleIterPolar (hdc, s.params[0], s.params[1], s.params[2], s.color);
-         else if (s.type == "CIRCLE_MIDPOINT"     && s.params.size() >= 3) CircleMidpoint  (hdc, s.params[0], s.params[1], s.params[2], s.color);
-//         else if (s.type == "CIRCLE_MOD_MIDPOINT" && s.params.size() >= 3) CircleModMid    (hdc, s.params[0], s.params[1], s.params[2], s.color);
+        //circle
+        else if (s.type == "CIRCLE_DIRECT"       && s.params.size() >= 3)
+            CircleDirect    (hdc, s.params[0], s.params[1], s.params[2], s.color);
+        else if (s.type == "CIRCLE_POLAR"        && s.params.size() >= 3)
+            CirclePolar     (hdc, s.params[0], s.params[1], s.params[2], s.color);
+        else if (s.type == "CIRCLE_ITER_POLAR"   && s.params.size() >= 3)
+            CircleIterPolar (hdc, s.params[0], s.params[1], s.params[2], s.color);
+        else if (s.type == "CIRCLE_MIDPOINT"     && s.params.size() >= 3)
+            CircleMidpoint  (hdc, s.params[0], s.params[1], s.params[2], s.color);
+        else if (s.type == "CIRCLE_MOD_MIDPOINT" && s.params.size() >= 3)
+            CircleModMid    (hdc, s.params[0], s.params[1], s.params[2], s.color);
 
-        // ── 3: Add ellipse + curve redraw cases here ──────────────
-        // else if (s.type == "ELLIPSE_DIRECT" && s.params.size() >= 4) EllipseDirect(hdc, s.params[0], s.params[1], s.params[2], s.params[3], s.color);
-        // else if (s.type == "CURVE_CARDINAL" && s.params.size() >= 2) CardinalSpline(hdc, s.params, s.color);
+        //ellipse
+        else if (s.type == "ELLIPSE_DIRECT" && s.params.size() >= 4)
+            EllipseDirect(hdc, s.params[0], s.params[1], s.params[2], s.params[3], s.color);
+        else if (s.type == "ELLIPSE_Midpoint" && s.params.size() >= 4)
+            EllipseMidpoint(hdc, s.params[0], s.params[1], s.params[2], s.params[3], s.color);
+        else if (s.type == "ELLIPSE_Polar" && s.params.size() >= 4)
+            EllipsePolar(hdc, s.params[0], s.params[1], s.params[2], s.params[3], s.color);
+
+
+         // ────────────── curve redraw cases here ──────────────
+//         else if (s.type == "CURVE_CARDINAL" && s.params.size() >= 2) CardinalSpline(hdc, s.params, s.color);
 
         // ── 4: Add filling redraw cases here ───────────────────────
         // (filling shapes are usually circles/rects drawn first, then filled)
@@ -505,15 +530,16 @@ void DrawLine(HDC hdc, int x1, int y1, int x2, int y2, COLORREF c)
 
 // ── 2: Add your circle functions below DrawLine ───────────────────
 void CircleDraw(HDC hdc, int cx, int cy, int r, COLORREF c){
-//    activeAlgorithm == "POLAR"
-//    activeAlgorithm == "Iterative_POLAR"
-//    activeAlgorithm == "DIRECT"
-//    activeAlgorithm == "MIDPOINT"
-//    activeAlgorithm == "Modified_Midpoint"
     if(activeAlgorithm == "MID")
         CircleMidpoint(hdc, cx, cy, r, c);
+    else if(activeAlgorithm == "Modified_Midpoint")
+        CircleModMid(hdc, cx, cy, r, c);
     else if(activeAlgorithm == "DIRECT")
         CircleDirect(hdc, cx, cy, r, c);
+    else if(activeAlgorithm == "POLAR")
+        CirclePolar(hdc, cx, cy, r, c);
+    else if(activeAlgorithm == "Iterative_POLAR")
+        CircleIterPolar(hdc, cx, cy, r, c);
 
 }
 
@@ -542,7 +568,28 @@ void CircleDirect(HDC hdc, int xc, int yc, int R , COLORREF c){
 
 }
 
+//using first order difference (DDA)
 void CircleMidpoint(HDC hdc, int xc, int yc, int R, COLORREF c){
+    int x = 0;
+    int y = R;
+    int d = 1 - R;
+    drawPoints(hdc, xc, yc, x, y, c);
+
+    while(x < y){
+        if(d < 0){
+            d += 2*x + 3;
+        }
+        else{
+            d += 2*x - 2*y + 5;
+            y--;
+        }
+        x++;
+        drawPoints(hdc, xc, yc, x, y, c);
+    }
+}
+
+//using second order (fewer calculations  no multiplication only addition
+void CircleModMid(HDC hdc, int xc, int yc, int R, COLORREF c){
     int x= 0;
     int y = R;
     int d = 1 - R;
@@ -566,7 +613,125 @@ void CircleMidpoint(HDC hdc, int xc, int yc, int R, COLORREF c){
     }
 }
 
+void CirclePolar(HDC hdc, int xc, int yc, int R, COLORREF c){
+    int x = R;
+    int y = 0;
+    double theta = 0;
+    double d_theta = 1.0/R;
+
+    drawPoints(hdc, xc, yc, x, y, c);
+
+    while(x>y){
+        theta += d_theta;
+        x = (int)round(R * cos(theta));
+        y = (int)round(R * sin(theta));
+        drawPoints(hdc, xc, yc, x, y, c);
+    }
+}
+
+void CircleIterPolar(HDC hdc, int xc, int yc, int R, COLORREF c){
+    double x = R;
+    double y = 0;
+    double d_theta = 1.0/R;
+    double cosine = cos(d_theta);
+    double sine = sin(d_theta);
+
+    drawPoints(hdc, xc, yc, (int)round(x), (int)round(y), c);
+
+    while(x > y){
+        double x1 = x*cosine - y*sine;
+        y = x*sine + y*cosine;
+        x = x1;
+        drawPoints(hdc, xc, yc, (int)round(x), (int)round(y), c);
+
+    }
+
+}
+
 // ── 3: Add ellipse + cardinal spline functions here ───────────────
+void EllipseDraw(HDC hdc, int xc, int yc, int rx, int ry, COLORREF c){
+    if(activeAlgorithm == "Ellipse_Direct")
+        EllipseDirect(hdc, xc, yc, rx, ry, c);
+    else if(activeAlgorithm == "Ellipse_Midpoint")
+        EllipseMidpoint(hdc, xc, yc, rx, ry, c);
+    else if(activeAlgorithm == "Ellipse_Polar")
+        EllipsePolar(hdc, xc, yc, rx, ry, c);
+}
+
+void ellipsePoints(HDC hdc, int xc, int yc, int x, int y, COLORREF c){
+    SetPixel(hdc, xc+x, yc+y, c);
+    SetPixel(hdc, xc-x, yc+y, c);
+    SetPixel(hdc, xc-x, yc-y, c);
+    SetPixel(hdc, xc+x, yc-y, c);
+}
+
+// x^2/a^2 + y^2/b^2 = 1  (a: half width, b:half height)
+//horizontal ellipse (x-h)^2/a^2 + (y-k)^2/b^2 = 1
+// Vertical ellipse (x-k)^2/a^2 + (y-h)^2/b^2 = 1
+//(h,K) center
+void EllipseDirect(HDC hdc, int xc, int yc, int rx, int ry, COLORREF c){
+    //loop on x from 0 to rx, calc y
+    for (int x = 0; x <= rx; x++){
+        double y = ry * sqrt(1.0 - (x * x) / ((double)rx * rx));
+        ellipsePoints(hdc, xc, yc, (int)round(x), (int)round(y), c);
+    }
+
+    //sweep y from 0 to ry, compute x
+    for (int y = 0; y <= ry; y++){
+        double x = rx * sqrt(1.0 - (y * y) / ((double)ry * ry));
+        ellipsePoints(hdc, xc, yc, (int)round(x), (int)round(y), c);
+    }
+}
+
+void EllipseMidpoint(HDC hdc, int xc, int yc, int rx, int ry, COLORREF c){
+    int x = 0;
+    int y = ry;
+    double d1 = (ry*ry) - (rx*rx*ry) + (0.25*rx*rx);
+
+    //slope < 1 curve more horizontal
+    while (2.0*ry*ry*x < 2.0*rx*rx*y){
+        ellipsePoints(hdc, xc, yc, x, y, c);
+        if(d1 <0){
+            x++;
+            d1+= 2*ry*ry*x + ry*ry;
+        }
+        else{
+            x++;
+            y--;
+            d1 += 2*ry*ry*x - 2*rx*rx*y + ry*ry;
+        }
+
+    }
+
+    double d2 = (ry*ry*(x+0.5)*(x+0.5)) + (rx*rx*(y-1)*(y-1)) - (rx*rx*ry*ry);
+    //slope > 1 more vertical
+    while(y >= 0){
+        ellipsePoints(hdc, xc, yc, x, y, c);
+        if(d2 > 0){
+            y--;
+            d2 += rx*rx - 2*rx*rx*y;
+        }
+        else{
+            y--;
+            x++;
+            d2 += 2*ry*ry*x - 2*rx*rx*y + rx*rx;
+        }
+    }
+}
+
+void EllipsePolar(HDC hdc, int xc, int yc, int rx, int ry, COLORREF c){
+    double theta = 0;
+    double d_theta = 1.0 / max(rx, ry);
+
+    //from 0 to 90 degree
+    while (theta <= M_PI / 2.0)
+    {
+        double x = rx * cos(theta);
+        double y = ry * sin(theta);
+        ellipsePoints(hdc, xc, yc, (int)round(x), (int)round(y), c);
+        theta += d_theta;
+    }
+}
 
 // ── 4: Add all filling functions here ─────────────────────────────
 
@@ -671,7 +836,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             cout << "[LINE] Parametric selected. Click start point.\n";
             break;
 
-    // ── 2: Add your circle cases here ─────────────────
+        //Circle
         case ID_CIRCLE_POLAR:
             activeAlgorithm = "POLAR";
             circleWaitingForRadius = false;
@@ -698,7 +863,24 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             cout << "[CIRCLE] Modified midpoint selected. Click center.\n";
             break;
 
-            // ── 3: Add ellipse + curve cases here ─────────────
+        //ellipse
+        case ID_ELLIPSE_DIRECT:
+            activeAlgorithm = "Ellipse_Direct";
+            ellipseWaiting = false;
+            cout << "[ELLIPSE] Direct selected. Click center.\n";
+            break;
+        case ID_ELLIPSE_MID:
+            activeAlgorithm = "Ellipse_Midpoint";
+            ellipseWaiting = false;
+            cout << "[ELLIPSE] Midpoint selected. Click center.\n";
+            break;
+        case ID_ELLIPSE_POLAR:
+            activeAlgorithm = "Ellipse_Polar";
+            ellipseWaiting = false;
+            cout << "[ELLIPSE] Polar selected. Click center.\n";
+            break;
+
+            // ── curve cases here ─────────────
 
             // ── 4: Add filling cases here ─────────────────────
 
@@ -751,10 +933,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             return 0;
         }
 
-        // ── 2: Add circle click handling here ──────────────────
-        // Circles need 2 clicks: center then a point on the rim.
-        // Calculate radius = distance between the two clicks.
-        // Pattern:
+
+        //Circle
          if (activeAlgorithm == "POLAR" || activeAlgorithm == "Iterative_POLAR" || activeAlgorithm == "DIRECT" ||
              activeAlgorithm == "MID" || activeAlgorithm == "Modified_Midpoint"){
 
@@ -772,6 +952,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                  s.color = currentColor;
                  s.params = { circleCX, circleCY, r };
                  shapes.push_back(s);
+
+                 cout << "[Circle] Drew " << activeAlgorithm
+                      << " center=(" << circleCX << "," << circleCY
+                      << ") r=" << r << "\n";
                  circleWaitingForRadius = false;
              }
              return 0;
@@ -780,6 +964,34 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         // ── 3: Add ellipse click handling here ─────────────────
         // Ellipses need 2 clicks: center, then corner of bounding box.
         // rx = abs(mx - cx),  ry = abs(my - cy)
+        if(activeAlgorithm == "Ellipse_Direct" || activeAlgorithm == "Ellipse_Midpoint" ||
+            activeAlgorithm == "Ellipse_Polar"){
+
+            if (!ellipseWaiting) {
+                ellipseCX = mx; ellipseCY = my;
+                ellipseWaiting = true;
+                cout << "[Ellipse] Center set. Click edge point.\n";
+            }else{
+                int rx = abs(mx - ellipseCX);
+                int ry = abs(my - ellipseCY);
+
+                HDC hdc = GetDC(hwnd);
+                EllipseDraw(hdc, ellipseCX, ellipseCY, rx, ry, currentColor);
+                ReleaseDC(hwnd, hdc);
+
+                Shape s;
+                s.type = activeAlgorithm;
+                s.color = currentColor;
+                s.params = {ellipseCX, ellipseCY, rx, ry};
+                shapes.push_back(s);
+                cout << "[Ellipse] Drew " << activeAlgorithm
+                     << " center=(" << ellipseCX << "," << ellipseCY
+                     << ") rx=" << rx << " ry=" << ry << "\n";
+
+                ellipseWaiting = false;
+            }
+
+        }
 
         // ── 4: Add filling click handling here ─────────────────
         // Most filling needs: draw shape first, then click inside to fill.
