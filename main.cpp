@@ -1,4 +1,5 @@
 #define UNICODE
+#define _USE_MATH_DEFINES   // makes M_PI available from <cmath> on all compilers
 #include <windows.h>
 #include <cmath>
 #include <stack>
@@ -53,6 +54,10 @@ using namespace std;
 #define ID_CLIP_RECT_POLY 8003
 #define ID_CLIP_SQ_POINT 8004
 #define ID_CLIP_SQ_LINE 8005
+
+// Bonus: Smiley - Sad faces
+#define ID_BONUS_HAPPY 9001
+#define ID_BONUS_SAD   9002
 
 // ════════════════════════════════════════════════════════════════════════════
 // SHAPE STRUCT — this is how every drawn shape is stored in memory.
@@ -117,9 +122,25 @@ bool ellipseWaiting = false;
 int ellipseCX = 0, ellipseCY = 0;
 
 
-// ── 3: Add curve click-state variables here ───────────────
+// ── Cardinal Spline click-state ────────────────────────
+// curveCollecting becomes true after the user enters tension in console.
+// Points accumulate with each left-click; right-click finalises the spline.
+bool           curveCollecting = false;
+double         curveTension    = 0.5;
+vector<POINT>  curvePoints;
 
-// ── 4: Add filling click-state variables here ─────────────────────
+// ── Circle-fill click-state  ────────────────────────────
+// Two clicks define the circle (center then edge), quarter comes from console.
+bool fillWaitingCenter = false;
+bool fillWaitingEdge   = false;
+int  fillCX = 0, fillCY = 0;
+int  fillQuarter = 1;          // 1=top-right 2=top-left 3=bottom-left 4=bottom-right
+
+// ── Smiley face click-state ────────────────────────────
+// Two clicks: center then edge to set face radius.
+bool smileyWaitingCenter = false;
+bool smileyWaitingEdge   = false;
+int  smileyCX = 0, smileyCY = 0;
 
 // ── 5: Add clipping click-state variables here ────────────────────
 
@@ -152,7 +173,21 @@ void EllipseMidpoint(HDC hdc, int xc, int yc, int x, int y, COLORREF c);
 void EllipsePolar(HDC hdc, int xc, int yc, int x, int y, COLORREF c);
 void EllipseDraw(HDC hdc, int xc, int yc, int x, int y, COLORREF c);
 
-// ── 4: Declare filling functions here ─────────────────────────────
+// ──  Curve functions ─────────────────────────────────────
+void GetHermiteCoeff(double p0, double s0, double p1, double s1, double coeff[4]);
+void DrawHermiteSeg(HDC hdc, int x0, int y0, int tx0, int ty0,
+                    int x1, int y1, int tx1, int ty1, COLORREF c, int numpts = 200);
+void DrawCardinalSpline(HDC hdc, POINT P[], int n, double tension, COLORREF c);
+
+// ──  Circle fill functions ──────────────────────────────
+void FillCircleWithLines(HDC hdc, int xc, int yc, int R, int quarter, COLORREF c);
+void FillCircleWithCircles(HDC hdc, int xc, int yc, int R, int quarter, COLORREF c);
+
+// ── Smiley face helpers ─────────────────────────────────
+void DrawArc(HDC hdc, int cx, int cy, int rx, int ry,
+             double tStart, double tEnd, COLORREF c);
+void DrawSmileyHappy(HDC hdc, int cx, int cy, int R, COLORREF c);
+void DrawSmileySad  (HDC hdc, int cx, int cy, int R, COLORREF c);
 
 // ── 5: Declare clipping functions here ─────────────────────────────
 
@@ -261,13 +296,25 @@ HMENU CreateAppMenu()
     AppendMenu(ellipseMenu, MF_STRING, ID_ELLIPSE_POLAR,       L"Polar");
     AppendMenu(menuBar, MF_POPUP, (UINT_PTR)ellipseMenu, L"Ellipse");
 
-    AppendMenu(menuBar, MF_POPUP, (UINT_PTR)CreatePopupMenu(), L"Curves");  // replace when done
+    // ── Curves menu  ───────────────────────────────────────
+    HMENU curveMenu = CreatePopupMenu();
+    AppendMenu(curveMenu, MF_STRING, ID_CURVE_CARDINAL, L"Cardinal Spline");
+    AppendMenu(menuBar, MF_POPUP, (UINT_PTR)curveMenu, L"Curves");
 
-    // ── 4: Replace placeholder with real Filling menu ─────────────
-    AppendMenu(menuBar, MF_POPUP, (UINT_PTR)CreatePopupMenu(), L"Filling"); // replace when done
+    // ── Filling menu (These are Hazem's items only; others will be added :)  ) ──
+    HMENU fillMenu = CreatePopupMenu();
+    AppendMenu(fillMenu, MF_STRING, ID_FILL_CIRCLE_LINES,   L"Circle with Lines");
+    AppendMenu(fillMenu, MF_STRING, ID_FILL_CIRCLE_CIRCLES, L"Circle with Circles");
+    AppendMenu(menuBar, MF_POPUP, (UINT_PTR)fillMenu, L"Filling");
 
     // ── 5: Replace placeholder with real Clipping menu ────────────
     AppendMenu(menuBar, MF_POPUP, (UINT_PTR)CreatePopupMenu(), L"Clipping"); // replace when done
+
+    // ── Bonus menu ────────────────────────────────────────
+    HMENU bonusMenu = CreatePopupMenu();
+    AppendMenu(bonusMenu, MF_STRING, ID_BONUS_HAPPY, L"Happy Smiley");
+    AppendMenu(bonusMenu, MF_STRING, ID_BONUS_SAD,   L"Sad Smiley");
+    AppendMenu(menuBar, MF_POPUP, (UINT_PTR)bonusMenu, L"Bonus");
 
     return menuBar;
 }
@@ -281,7 +328,24 @@ void ClearScreen(HWND hwnd)
 {
     shapes.clear();
     InvalidateRect(hwnd, NULL, TRUE);
-    cout << "[FILE] Screen cleared.\n";
+
+    // Also reset any in-progress drawing state so the next tool starts clean
+    activeAlgorithm     = "";
+    waitingForSecondClick = false;
+    circleWaitingForRadius = false;
+    ellipseWaiting      = false;
+    curveCollecting     = false;
+    curvePoints.clear();
+    fillWaitingCenter   = false;
+    fillWaitingEdge     = false;
+    smileyWaitingCenter = false;
+    smileyWaitingEdge   = false;
+
+    // Clear the console window so the log is fresh for the next test
+    system("cls");
+    cout << "[INFO] 2D Drawing Package started.\n";
+    cout << "[INFO] Pick a tool from the menu, then click two points.\n";
+    cout << "[INFO] Canvas and console cleared — ready for next test.\n";
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -373,20 +437,21 @@ void LoadFromFile(HWND hwnd)
 // ════════════════════════════════════════════════════════════════════════════
 void RedrawShapes(HDC hdc)
 {
+    // Each type is checked independently with its own size guard.
+    // Using chained if/else-if with an outer size guard caused shapes with
+    // params.size() >= 4 (ellipses, curves, fills) to fall into the lines
+    // block and never reach their own branch — fixed here.
     for (auto &s : shapes)
     {
-        // ── Lines (1) ─────────────────────────────────────────────
-        if (s.params.size() >= 4)
-        {
-            if (s.type == "LINE_DDA")
-                LineDDA(hdc, s.params[0], s.params[1], s.params[2], s.params[3], s.color);
-            else if (s.type == "LINE_MIDPOINT")
-                LineMidpoint(hdc, s.params[0], s.params[1], s.params[2], s.params[3], s.color);
-            else if (s.type == "LINE_PARAMETRIC")
-                LineParametric(hdc, s.params[0], s.params[1], s.params[2], s.params[3], s.color);
-        }
+        // ── Lines ─────────────────────────────────────────────────
+        if      (s.type == "LINE_DDA"        && s.params.size() >= 4)
+            LineDDA       (hdc, s.params[0], s.params[1], s.params[2], s.params[3], s.color);
+        else if (s.type == "LINE_MIDPOINT"   && s.params.size() >= 4)
+            LineMidpoint  (hdc, s.params[0], s.params[1], s.params[2], s.params[3], s.color);
+        else if (s.type == "LINE_PARAMETRIC" && s.params.size() >= 4)
+            LineParametric(hdc, s.params[0], s.params[1], s.params[2], s.params[3], s.color);
 
-        //circle
+        // ── Circles ───────────────────────────────────────────────
         else if (s.type == "CIRCLE_DIRECT"       && s.params.size() >= 3)
             CircleDirect    (hdc, s.params[0], s.params[1], s.params[2], s.color);
         else if (s.type == "CIRCLE_POLAR"        && s.params.size() >= 3)
@@ -398,20 +463,45 @@ void RedrawShapes(HDC hdc)
         else if (s.type == "CIRCLE_MOD_MIDPOINT" && s.params.size() >= 3)
             CircleModMid    (hdc, s.params[0], s.params[1], s.params[2], s.color);
 
-        //ellipse
-        else if (s.type == "ELLIPSE_DIRECT" && s.params.size() >= 4)
-            EllipseDirect(hdc, s.params[0], s.params[1], s.params[2], s.params[3], s.color);
+        // ── Ellipses ──────────────────────────────────────────────
+        else if (s.type == "ELLIPSE_DIRECT"   && s.params.size() >= 4)
+            EllipseDirect  (hdc, s.params[0], s.params[1], s.params[2], s.params[3], s.color);
         else if (s.type == "ELLIPSE_Midpoint" && s.params.size() >= 4)
             EllipseMidpoint(hdc, s.params[0], s.params[1], s.params[2], s.params[3], s.color);
-        else if (s.type == "ELLIPSE_Polar" && s.params.size() >= 4)
-            EllipsePolar(hdc, s.params[0], s.params[1], s.params[2], s.params[3], s.color);
+        else if (s.type == "ELLIPSE_Polar"    && s.params.size() >= 4)
+            EllipsePolar   (hdc, s.params[0], s.params[1], s.params[2], s.params[3], s.color);
 
+        // ── Cardinal Spline  ─────────────────────────────
+        // Params layout: [tension*1000, n, x0,y0, x1,y1, ..., xn-1,yn-1]
+        else if (s.type == "CURVE_CARDINAL" && s.params.size() >= 4)
+        {
+            double tension = s.params[0] / 1000.0;
+            int n = s.params[1];
+            if ((int)s.params.size() >= 2 + 2 * n)
+            {
+                vector<POINT> pts(n);
+                for (int i = 0; i < n; i++)
+                {
+                    pts[i].x = s.params[2 + 2 * i];
+                    pts[i].y = s.params[3 + 2 * i];
+                }
+                DrawCardinalSpline(hdc, pts.data(), n, tension, s.color);
+            }
+        }
 
-         // ────────────── curve redraw cases here ──────────────
-//         else if (s.type == "CURVE_CARDINAL" && s.params.size() >= 2) CardinalSpline(hdc, s.params, s.color);
+        // ── Circle fill  — Params: [cx, cy, R, quarter] ─
+        else if (s.type == "FILL_CIRCLE_LINES" && s.params.size() >= 4)
+            FillCircleWithLines  (hdc, s.params[0], s.params[1],
+                                  s.params[2], s.params[3], s.color);
+        else if (s.type == "FILL_CIRCLE_CIRCLES" && s.params.size() >= 4)
+            FillCircleWithCircles(hdc, s.params[0], s.params[1],
+                                  s.params[2], s.params[3], s.color);
 
-        // ── 4: Add filling redraw cases here ───────────────────────
-        // (filling shapes are usually circles/rects drawn first, then filled)
+        // ── Smiley faces  — Params: [cx, cy, R] ─────────
+        else if (s.type == "SMILEY_HAPPY" && s.params.size() >= 3)
+            DrawSmileyHappy(hdc, s.params[0], s.params[1], s.params[2], s.color);
+        else if (s.type == "SMILEY_SAD"   && s.params.size() >= 3)
+            DrawSmileySad  (hdc, s.params[0], s.params[1], s.params[2], s.color);
 
         // ── 5: Clipping doesn't need redraw entries —
         //    it operates on existing shapes using the clipping window
@@ -733,7 +823,214 @@ void EllipsePolar(HDC hdc, int xc, int yc, int rx, int ry, COLORREF c){
     }
 }
 
-// ── 4: Add all filling functions here ─────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════
+// CURVES 
+//
+// Hermite basis matrix:
+//  | 2  1 -2  1 |
+//  |-3 -2  3 -1 |
+//  | 0  1  0  0 |
+//  | 1  0  0  0 |
+//
+// x(t) = coeff[0]*t³ + coeff[1]*t² + coeff[2]*t + coeff[3]
+// ════════════════════════════════════════════════════════════════════════════
+
+// Compute cubic Hermite coefficients for one axis.
+// p0/p1 = start/end positions, s0/s1 = start/end tangents.
+// Fills coeff[0..3] as [t³, t², t¹, t⁰].
+void GetHermiteCoeff(double p0, double s0, double p1, double s1, double coeff[4])
+{
+    coeff[0] =  2*p0 + s0 - 2*p1 + s1;  // t³
+    coeff[1] = -3*p0 - 2*s0 + 3*p1 - s1; // t²
+    coeff[2] =  s0;                       // t¹
+    coeff[3] =  p0;                       // t⁰
+}
+
+// Draw one Hermite curve segment from (x0,y0) to (x1,y1).
+// (tx0,ty0) and (tx1,ty1) are the tangent vectors at each end.
+// numpts controls smoothness (higher = smoother but slower).
+void DrawHermiteSeg(HDC hdc, int x0, int y0, int tx0, int ty0,
+                    int x1, int y1, int tx1, int ty1, COLORREF c, int numpts)
+{
+    double cx[4], cy[4];
+    GetHermiteCoeff(x0, tx0, x1, tx1, cx);
+    GetHermiteCoeff(y0, ty0, y1, ty1, cy);
+
+    double dt = 1.0 / (numpts - 1);
+    int prevX = x0, prevY = y0;
+
+    for (int i = 1; i < numpts; i++)
+    {
+        double t  = i * dt;
+        double t2 = t * t, t3 = t2 * t;
+        int nx = (int)round(cx[0]*t3 + cx[1]*t2 + cx[2]*t + cx[3]);
+        int ny = (int)round(cy[0]*t3 + cy[1]*t2 + cy[2]*t + cy[3]);
+    
+        LineMidpoint(hdc, prevX, prevY, nx, ny, c);
+        prevX = nx; prevY = ny;
+    }
+}
+
+// Cardinal Spline through P[0..n-1].
+// Draws through the inner points P[1] to P[n-2].
+// Needs n >= 4 (P[0] and P[n-1] are tangent helpers, not drawn through).
+// tension: 0 = very smooth (Catmull-Rom), 1 = straight lines between points.
+// Formula from lecture: Ti = (1 - tension) * (P[i+1] - P[i-1])
+void DrawCardinalSpline(HDC hdc, POINT P[], int n, double tension, COLORREF c)
+{
+    if (n < 4) return;
+
+    double c1 = 1.0 - tension; // scale factor for tangents
+
+    // Tangent at P[1] (the first drawn point)
+    int tx0 = (int)round(c1 * (P[2].x - P[0].x));
+    int ty0 = (int)round(c1 * (P[2].y - P[0].y));
+
+    // Draw each segment P[i-1] → P[i] for i = 2 .. n-2
+    for (int i = 2; i < n - 1; i++)
+    {
+        int tx1 = (int)round(c1 * (P[i+1].x - P[i-1].x));
+        int ty1 = (int)round(c1 * (P[i+1].y - P[i-1].y));
+
+        DrawHermiteSeg(hdc,
+                       P[i-1].x, P[i-1].y, tx0, ty0,
+                       P[i].x,   P[i].y,   tx1, ty1,
+                       c);
+        tx0 = tx1;
+        ty0 = ty1;
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// CIRCLE FILLING 
+//
+// Quarter numbering (screen coords, y increases downward):
+//   Q1 = top-right   (x >= cx, y <= cy)
+//   Q2 = top-left    (x <= cx, y <= cy)
+//   Q3 = bottom-left (x <= cx, y >= cy)
+//   Q4 = bottom-right(x >= cx, y >= cy)
+// ════════════════════════════════════════════════════════════════════════════
+
+// Fill the selected quarter of a circle with horizontal scan lines.
+// Scan lines go from the circle boundary to the vertical diameter (center column).
+void FillCircleWithLines(HDC hdc, int xc, int yc, int R, int quarter, COLORREF c)
+{
+    // Top quarters scan upward (smaller y), bottom scan downward
+    int yStart = (quarter == 1 || quarter == 2) ? yc - R : yc;
+    int yEnd   = (quarter == 1 || quarter == 2) ? yc     : yc + R;
+
+    for (int y = yStart; y <= yEnd; y++)
+    {
+        int dy = y - yc;
+        if (dy * dy > R * R) continue; // outside circle, skip
+
+        // Horizontal reach at this y
+        int dx = (int)round(sqrt((double)(R * R - dy * dy)));
+
+        // Right half (Q1, Q4): line from center column to right boundary
+        // Left  half (Q2, Q3): line from left boundary to center column
+        int lx, rx;
+        if (quarter == 1 || quarter == 4) { lx = xc;      rx = xc + dx; }
+        else                               { lx = xc - dx; rx = xc;      }
+
+        LineMidpoint(hdc, lx, y, rx, y, c);
+    }
+}
+
+// Fill the selected quarter of a circle with concentric circle arcs.
+// Each ring is 5 pixels smaller than the last, down to radius 1.
+void FillCircleWithCircles(HDC hdc, int xc, int yc, int R, int quarter, COLORREF c)
+{
+    // Angle ranges (screen coords: θ=0 → right, θ=π/2 → bottom, θ=π → left, θ=3π/2 → top)
+    double tStart, tEnd;
+    switch (quarter)
+    {
+    case 1: tStart = -M_PI / 2.0; tEnd = 0;            break; // top-right
+    case 2: tStart =  M_PI;       tEnd = 3*M_PI / 2.0; break; // top-left
+    case 3: tStart =  M_PI / 2.0; tEnd = M_PI;         break; // bottom-left
+    default:tStart =  0;          tEnd = M_PI / 2.0;   break; // bottom-right (Q4)
+    }
+
+    // Draw concentric arcs at every 5-pixel radius step
+    for (int r = 5; r <= R; r += 5)
+    {
+        double dtheta = 1.0 / r; // arc-length ≈ 1 px per step (from lecture polar circle)
+        for (double theta = tStart; theta <= tEnd + dtheta / 2.0; theta += dtheta)
+        {
+            int x = xc + (int)round(r * cos(theta));
+            int y = yc + (int)round(r * sin(theta));
+            SetPixel(hdc, x, y, c);
+        }
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// BONUS: SMILEY FACES
+//
+// Uses CircleMidpoint and LineMidpoint.
+// Mouth is drawn as a parametric arc (portion of an ellipse).
+// ════════════════════════════════════════════════════════════════════════════
+
+
+void DrawArc(HDC hdc, int cx, int cy, int rx, int ry,
+             double tStart, double tEnd, COLORREF c)
+{
+    double dtheta = 1.0 / max(rx, ry); // -> from polar circle lecture
+    int prevX = cx + (int)round(rx * cos(tStart));
+    int prevY = cy + (int)round(ry * sin(tStart));
+
+    for (double t = tStart + dtheta; t <= tEnd + dtheta / 2.0; t += dtheta)
+    {
+        int x = cx + (int)round(rx * cos(t));
+        int y = cy + (int)round(ry * sin(t));
+        LineMidpoint(hdc, prevX, prevY, x, y, c);
+        prevX = x; prevY = y;
+    }
+}
+
+// Happy smiley face.
+// Face + eyes: CircleMidpoint , Nose: LineMidpoint ,
+// Smile: lower half of an ellipse arc (θ = 0 → π, bottom arc = U shape).
+void DrawSmileyHappy(HDC hdc, int cx, int cy, int R, COLORREF c)
+{
+    // Face outline
+    CircleMidpoint(hdc, cx, cy, R, c);
+
+    // Eyes (two small circles, offset up and to each side)
+    CircleMidpoint(hdc, cx - R/3, cy - R/4, R/8, c);
+    CircleMidpoint(hdc, cx + R/3, cy - R/4, R/8, c);
+
+    // Nose: two short diagonal lines meeting at a point
+    LineMidpoint(hdc, cx,cy,cx - R/10, cy + R/6, c);
+    LineMidpoint(hdc, cx,cy,cx + R/10, cy + R/6, c);
+
+    // Smile: bottom half of ellipse centered below face center.
+    // θ 0→π sweeps: right-corner → bottom-middle → left-corner (happy U curve).
+    DrawArc(hdc, cx, cy + R/4, R/2, R/4, 0, M_PI, c);
+}
+
+// Sad smiley face.
+// Same structure as happy but frown = top half of ellipse arc (θ = π → 2π,
+// which sweeps: left-corner → top-middle → right-corner, an upside-down U).
+void DrawSmileySad(HDC hdc, int cx, int cy, int R, COLORREF c)
+{
+    // Face outline
+    CircleMidpoint(hdc, cx, cy, R, c);
+
+    // Eyes
+    CircleMidpoint(hdc, cx - R/3, cy - R/4, R/8, c);
+    CircleMidpoint(hdc, cx + R/3, cy - R/4, R/8, c);
+
+    // Nose
+    LineMidpoint(hdc, cx,cy,cx - R/10, cy + R/6, c);
+    LineMidpoint(hdc, cx,cy,cx + R/10, cy + R/6, c);
+
+    // Frown: top half of ellipse.
+    // Center moved to cy + R/2 so the arch top sits at cy + R/3,
+    // leaving a clear gap above the nose tip (cy + R/6).
+    // θ π→2π sweeps: left-corner → top-middle → right-corner (sad ∩ curve).
+    DrawArc(hdc, cx, cy + R / 2, R / 2, R / 6, M_PI, 2 * M_PI, c);
+}
 
 // ── 5: Add all clipping functions here ─────────────────────────────
 
@@ -880,9 +1177,72 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             cout << "[ELLIPSE] Polar selected. Click center.\n";
             break;
 
-            // ── curve cases here ─────────────
+        // ── Cardinal Spline  ────────────────────────────
+        case ID_CURVE_CARDINAL:
+            activeAlgorithm = "CURVE_CARDINAL";
+            curveCollecting = false;
+            curvePoints.clear();
+            // Ask tension in a background thread so the GUI stays live
+            thread([]()
+            {
+                cout << "[CURVE] Cardinal Spline selected.\n";
+                cout << "[CURVE] Enter tension (0.0 = smooth, 1.0 = straight): ";
+                cin >> curveTension;
+                if (curveTension < 0) curveTension = 0;
+                if (curveTension > 1) curveTension = 1;
+                curveCollecting = true;
+                cout << "[CURVE] Click at least 4 points on the canvas.\n";
+                cout << "[CURVE] Right-click (or press Enter here) when done.\n";
+            }).detach();
+            break;
 
-            // ── 4: Add filling cases here ─────────────────────
+        // ── Circle fill ─────────────────────────────────
+        case ID_FILL_CIRCLE_LINES:
+            activeAlgorithm = "FILL_CIRCLE_LINES";
+            fillWaitingCenter = false;
+            fillWaitingEdge   = false;
+            thread([]()
+            {
+                cout << "[FILL] Fill Circle with Lines.\n";
+                cout << "[FILL] Enter quarter (1=top-right, 2=top-left, "
+                        "3=bottom-left, 4=bottom-right): ";
+                cin >> fillQuarter;
+                if (fillQuarter < 1 || fillQuarter > 4) fillQuarter = 1;
+                fillWaitingCenter = true;
+                cout << "[FILL] Click circle center.\n";
+            }).detach();
+            break;
+
+        case ID_FILL_CIRCLE_CIRCLES:
+            activeAlgorithm = "FILL_CIRCLE_CIRCLES";
+            fillWaitingCenter = false;
+            fillWaitingEdge   = false;
+            thread([]()
+            {
+                cout << "[FILL] Fill Circle with Circles.\n";
+                cout << "[FILL] Enter quarter (1=top-right, 2=top-left, "
+                        "3=bottom-left, 4=bottom-right): ";
+                cin >> fillQuarter;
+                if (fillQuarter < 1 || fillQuarter > 4) fillQuarter = 1;
+                fillWaitingCenter = true;
+                cout << "[FILL] Click circle center.\n";
+            }).detach();
+            break;
+
+        // ── Smiley faces ───────────────────────
+        case ID_BONUS_HAPPY:
+            activeAlgorithm    = "SMILEY_HAPPY";
+            smileyWaitingCenter = true;
+            smileyWaitingEdge   = false;
+            cout << "[BONUS] Happy Smiley selected. Click face center.\n";
+            break;
+
+        case ID_BONUS_SAD:
+            activeAlgorithm    = "SMILEY_SAD";
+            smileyWaitingCenter = true;
+            smileyWaitingEdge   = false;
+            cout << "[BONUS] Sad Smiley selected. Click face center.\n";
+            break;
 
             // ── 5: Add clipping cases here ────────────────────
         }
@@ -993,14 +1353,148 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
         }
 
-        // ── 4: Add filling click handling here ─────────────────
-        // Most filling needs: draw shape first, then click inside to fill.
-        // Use a separate activeAlgorithm string like "FILL_FLOOD_REC"
+        // ── Cardinal Spline click collection  ───────────────
+        if (activeAlgorithm == "CURVE_CARDINAL" && curveCollecting)
+        {
+            POINT pt; pt.x = mx; pt.y = my;
+            curvePoints.push_back(pt);
+            cout << "[CURVE] Point " << curvePoints.size()
+                 << " added at (" << mx << "," << my << ").\n";
+
+            // Preview: mark the clicked point
+            HDC hdc = GetDC(hwnd);
+            Ellipse(hdc, mx - 3, my - 3, mx + 3, my + 3);
+            ReleaseDC(hwnd, hdc);
+            return 0;
+        }
+
+        // ── Circle fill click handling  ─────────────────────
+        if ((activeAlgorithm == "FILL_CIRCLE_LINES" ||
+             activeAlgorithm == "FILL_CIRCLE_CIRCLES") && fillWaitingCenter)
+        {
+            if (!fillWaitingEdge)
+            {
+                // First click: store center
+                fillCX = mx; fillCY = my;
+                fillWaitingEdge = true;
+                cout << "[FILL] Center set at (" << mx << "," << my
+                     << "). Click edge point to define radius.\n";
+            }
+            else
+            {
+                // Second click: compute radius and draw the fill
+                int dx = mx - fillCX, dy = my - fillCY;
+                int R  = (int)round(sqrt((double)(dx*dx + dy*dy)));
+
+                HDC hdc = GetDC(hwnd);
+                if (activeAlgorithm == "FILL_CIRCLE_LINES")
+                    FillCircleWithLines(hdc, fillCX, fillCY, R, fillQuarter, currentColor);
+                else
+                    FillCircleWithCircles(hdc, fillCX, fillCY, R, fillQuarter, currentColor);
+                ReleaseDC(hwnd, hdc);
+
+                // Save for redraw
+                Shape s;
+                s.type   = activeAlgorithm;
+                s.color  = currentColor;
+                s.params = { fillCX, fillCY, R, fillQuarter };
+                shapes.push_back(s);
+
+                cout << "[FILL] Drew " << activeAlgorithm
+                     << " center=(" << fillCX << "," << fillCY
+                     << ") R=" << R << " Q=" << fillQuarter << "\n";
+
+                fillWaitingCenter = false;
+                fillWaitingEdge   = false;
+            }
+            return 0;
+        }
+
+        // ── Smiley face click handling ─────────────────────
+        if ((activeAlgorithm == "SMILEY_HAPPY" || activeAlgorithm == "SMILEY_SAD")
+             && smileyWaitingCenter)
+        {
+            if (!smileyWaitingEdge)
+            {
+                // First click: face center
+                smileyCX = mx; smileyCY = my;
+                smileyWaitingEdge = true;
+                cout << "[BONUS] Center set. Click to set face radius.\n";
+            }
+            else
+            {
+                // Second click: radius from distance
+                int dx = mx - smileyCX, dy = my - smileyCY;
+                int R  = (int)round(sqrt((double)(dx*dx + dy*dy)));
+                if (R < 10) R = 10; // minimum sensible size
+
+                HDC hdc = GetDC(hwnd);
+                if (activeAlgorithm == "SMILEY_HAPPY")
+                    DrawSmileyHappy(hdc, smileyCX, smileyCY, R, currentColor);
+                else
+                    DrawSmileySad  (hdc, smileyCX, smileyCY, R, currentColor);
+                ReleaseDC(hwnd, hdc);
+
+                // Save for redraw
+                Shape s;
+                s.type   = activeAlgorithm;
+                s.color  = currentColor;
+                s.params = { smileyCX, smileyCY, R };
+                shapes.push_back(s);
+
+                cout << "[BONUS] Drew " << activeAlgorithm
+                     << " at (" << smileyCX << "," << smileyCY
+                     << ") R=" << R << "\n";
+
+                smileyWaitingCenter = false;
+                smileyWaitingEdge   = false;
+            }
+            return 0;
+        }
 
         // ── 5: Add clipping click handling here ────────────────
         // Rectangle clipping window: 2 clicks for top-left and bottom-right.
 
         break;
+    }
+
+    // ── right-click finalises Cardinal Spline ────────
+    case WM_RBUTTONDOWN:
+    {
+        if (activeAlgorithm == "CURVE_CARDINAL" && curveCollecting)
+        {
+            int n = (int)curvePoints.size();
+            if (n < 4)
+            {
+                cout << "[CURVE] Need at least 4 points (have " << n
+                     << "). Keep clicking.\n";
+            }
+            else
+            {
+                HDC hdc = GetDC(hwnd);
+                DrawCardinalSpline(hdc, curvePoints.data(), n, curveTension, currentColor);
+                ReleaseDC(hwnd, hdc);
+
+                // Save: params = [tension*1000, n, x0,y0, x1,y1, ...]
+                Shape s;
+                s.type  = "CURVE_CARDINAL";
+                s.color = currentColor;
+                s.params.push_back((int)(curveTension * 1000));
+                s.params.push_back(n);
+                for (int i = 0; i < n; i++)
+                {
+                    s.params.push_back(curvePoints[i].x);
+                    s.params.push_back(curvePoints[i].y);
+                }
+                shapes.push_back(s);
+
+                cout << "[CURVE] Cardinal Spline drawn through "
+                     << (n - 2) << " points (tension=" << curveTension << ").\n";
+                curveCollecting = false;
+                curvePoints.clear();
+            }
+        }
+        return 0;
     }
 
     // ── WM_PAINT: fires when window needs repainting ──────────────────
