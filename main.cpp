@@ -1010,7 +1010,7 @@ void FillCircleWithCircles(HDC hdc, int xc, int yc, int R, int quarter, COLORREF
     case 3:  tStart = M_PI / 2.0; tEnd = M_PI;           break; // bottom-left
     default: tStart = 0;        tEnd = M_PI / 2.0;       break; // bottom-right (Q4)
     }
-    for (int r = 5; r <= R; r += 5)
+    for (int r = 1; r <= R; r++)
     {
         double dtheta = 1.0 / r;
         for (double theta = tStart; theta <= tEnd + dtheta / 2.0; theta += dtheta)
