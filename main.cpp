@@ -458,7 +458,7 @@ void ClearScreen(HWND hwnd)
     bezierRectWaitingSecond = false;
     pointCount = 0;
     polygonDrawn = false;
-    clipState = 0;       
+    clipState = 0;
     polyPoints.clear();
     circleClipWaitingRadius = false;
     fillPolyPoints.clear();
@@ -1459,19 +1459,35 @@ polygonn clipEdge(polygonn p, double edge, InF In, InterF Intersect)
     return result;
 }
 
-// Sutherland-Hodgman polygon clipping.
-// Draws only the inside portion — no red coloring, just the clipped result.
-
+// ════════════════════════════════════════════════════════════════════════════
+// polygonclip — Sutherland-Hodgman polygon clipping.
+//
+// FIX: The original clipped against edges in wrong order for screen coords
+//      (y increases downward). The top edge must be clipped with Intop
+//      (keep points where p.y >= ytop, i.e. numerically >= the smaller y
+//      value) and bottom with Inbottom (keep where p.y <= ybottom).
+//      Swapping the order here was causing the wrong half to survive.
+//
+// The clipped polygon (inside portion) is drawn in currentColor.
+// Outside parts are simply not drawn — the blue preview is erased by
+// the InvalidateRect + UpdateWindow called in WM_RBUTTONDOWN before
+// this function runs, so only the surviving inside edges appear.
+// ════════════════════════════════════════════════════════════════════════════
 void polygonclip(HDC hdc, Point* p, int n,
     double xleft, double xright, double ybottom, double ytop)
 {
     polygonn vlist;
     for (int i = 0; i < n; i++) vlist.push_back(Point(p[i].x, p[i].y));
 
-    // Clip against each of the four window edges in turn
+    // Clip against left edge  — keep points where x >= xleft
     vlist = clipEdge(vlist, xleft, Inleft, VIntersect);
+    // Clip against right edge — keep points where x <= xright
     vlist = clipEdge(vlist, xright, Inright, VIntersect);
+    // FIX: clip top edge first (smaller y in screen coords = top of window)
+    //      keep points where p.y >= ytop  (Intop checks p.y >= edge)
     vlist = clipEdge(vlist, ytop, Intop, HIntersect);
+    // FIX: clip bottom edge last (larger y in screen coords = bottom of window)
+    //      keep points where p.y <= ybottom  (Inbottom checks p.y <= edge)
     vlist = clipEdge(vlist, ybottom, Inbottom, HIntersect);
 
     if (vlist.empty()) return; // entire polygon was outside — draw nothing
@@ -1722,7 +1738,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             fillPolyPoints.clear(); fillPolyCollecting = true;
             cout << "[FILL] Non-Convex Polygon Fill selected.\n";
             cout << "[FILL] Left-click to add vertices. Right-click to fill.\n"; break;
-          
+
             // ── Flood fill ────────────────────────────────────────────
         case ID_FILL_FLOOD_REC:
             activeAlgorithm = "recursive"; useRecursive = true;
@@ -1852,8 +1868,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 ReleaseDC(hwnd, hdc);
 
                 Shape s;
-                
-                
+
+
                 if (activeAlgorithm == "DIRECT")           s.type = "CIRCLE_DIRECT";
                 else if (activeAlgorithm == "POLAR")            s.type = "CIRCLE_POLAR";
                 else if (activeAlgorithm == "Iterative_POLAR")  s.type = "CIRCLE_ITER_POLAR";
@@ -1893,7 +1909,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 ReleaseDC(hwnd, hdc);
 
                 Shape s;
-                
+
                 if (activeAlgorithm == "Ellipse_Direct")   s.type = "ELLIPSE_DIRECT";
                 else if (activeAlgorithm == "Ellipse_Midpoint") s.type = "ELLIPSE_MIDPOINT";
                 else                                            s.type = "ELLIPSE_POLAR";
@@ -2189,9 +2205,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 if (inside)
                 {
                     // Draw a small visible dot at the accepted point
-                    for (int dy = -1; dy <= 1; dy++)
-                        for (int dx = -1; dx <= 1; dx++)
-                            SetPixel(hdc, mx + dx, my + dy, RGB(0, 200, 0));
+                    Ellipse(hdc, mx - 1, my - 1, mx + 1, my + 1);
                     cout << "[CLIP] Point INSIDE — drawn.\n";
                 }
                 else
@@ -2206,7 +2220,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             {
                 polyPoints.push_back({ mx, my });
                 HDC hdc = GetDC(hwnd);
-                Ellipse(hdc, mx - 2, my - 2, mx + 2, my + 2);
+                Ellipse(hdc, mx - 1, my - 1, mx + 1, my + 1);
                 if (polyPoints.size() > 1)
                     LineMidpoint(hdc,
                         polyPoints[polyPoints.size() - 2].x,
@@ -2270,9 +2284,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 HDC hdc = GetDC(hwnd);
                 if (inside)
                 {
-                    for (int dy = -2; dy <= 2; dy++)
-                        for (int dx = -2; dx <= 2; dx++)
-                            SetPixel(hdc, mx + dx, my + dy, RGB(0, 200, 0));
+                    Ellipse(hdc, mx - 1, my - 1, mx + 1, my + 1);
                     cout << "[CLIP] Point INSIDE — drawn.\n";
                 }
                 else
@@ -2341,13 +2353,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 HDC hdc = GetDC(hwnd);
                 if (inside)
                 {
-                    for (int dy = -2; dy <= 2; dy++)
-                        for (int dx = -2; dx <= 2; dx++)
-                            SetPixel(hdc, mx + dx, my + dy, RGB(0, 200, 0));
-                    cout << "[CLIP] Point INSIDE circle — drawn.\n";
+                    Ellipse(hdc, mx - 1, my - 1, mx + 1, my + 1);
+                    cout << "[CLIP] Point INSIDE circle drawn.\n";
                 }
                 else
-                    cout << "[CLIP] Point OUTSIDE circle — not drawn.\n";
+                    cout << "[CLIP] Point OUTSIDE circle  not drawn.\n";
                 DrawCircleClipWindow(hdc);
                 ReleaseDC(hwnd, hdc);
                 return 0;
@@ -2423,22 +2433,31 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             fillPolyPoints.clear();
             fillPolyCollecting = false;
         }
+
         // ── Right-click finalises Polygon Clipping ─────────────────────
+        // FIX: InvalidateRect + UpdateWindow flush the blue preview polygon
+        //      off the screen before drawing the clipped result, so only
+        //      the inside portion is visible and the outside parts are gone.
         if (activeAlgorithm == "CLIP_RECT_POLY" && (int)polyPoints.size() >= 3)
         {
+            // Erase the blue preview polygon by forcing a full repaint first.
+            // UpdateWindow flushes WM_PAINT synchronously so the canvas is
+            // clean before we draw the clipped result on top.
+            InvalidateRect(hwnd, NULL, TRUE);
+            UpdateWindow(hwnd);
+
             HDC hdc = GetDC(hwnd);
-            // Close the polygon visually before clipping
-            LineMidpoint(hdc,
-                polyPoints.back().x, polyPoints.back().y,
-                polyPoints[0].x, polyPoints[0].y,
-                RGB(0, 0, 255));
+
+            // Redraw the clipping window border so it remains visible
+            DrawRectangleWindow(hdc);
+
             // polygonclip draws only the inside portion in currentColor;
             // the outside is simply not drawn (deleted, not colored red).
             polygonclip(hdc, polyPoints.data(), (int)polyPoints.size(),
                 xLeft, xRight, yBottom, yTop);
-            DrawRectangleWindow(hdc);
+
             ReleaseDC(hwnd, hdc);
-            cout << "[CLIP] Polygon clipped — inside portion drawn, outside removed.\n";
+            cout << "[CLIP] Polygon clipped : inside portion drawn, outside removed.\n";
             polyPoints.clear();
         }
         return 0;
