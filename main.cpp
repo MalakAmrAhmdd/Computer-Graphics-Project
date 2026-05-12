@@ -951,8 +951,7 @@ void FillCircleWithCircles(HDC hdc, int xc, int yc, int R, int quarter, COLORREF
     default:tStart =  0;          tEnd = M_PI / 2.0;   break; // bottom-right (Q4)
     }
 
-    // Draw concentric arcs at every 5-pixel radius step
-    for (int r = 5; r <= R; r += 5)
+    for (int r = 1; r <= R; r++)
     {
         double dtheta = 1.0 / r; // arc-length ≈ 1 px per step (from lecture polar circle)
         for (double theta = tStart; theta <= tEnd + dtheta / 2.0; theta += dtheta)
