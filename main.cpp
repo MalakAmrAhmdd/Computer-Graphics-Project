@@ -8,6 +8,7 @@
 #include <vector>
 #include <string>
 #include <thread>
+#include <algorithm>
 
 using namespace std;
 
@@ -196,6 +197,11 @@ static int p2x, p2y;
 vector<Point> polyPoints;
 bool polyCollect = false;
 
+// ── Convex / Non-Convex polygon fill click-state ──────────────────────────
+// Vertices are collected with left-clicks; right-click triggers the fill.
+struct FillPoint { int x, y; };
+vector<FillPoint> fillPolyPoints;
+bool fillPolyCollecting = false;
 // ════════════════════════════════════════════════════════════════════════════
 // FORWARD DECLARATIONS — tells the compiler these functions exist
 // before they are defined later in the file
@@ -238,6 +244,15 @@ void FillCircleWithCircles(HDC hdc, int xc, int yc, int R, int quarter, COLORREF
 // ── Hermite & Bezier fill functions ──────────────────────────────
 void FillSquareHermite(HDC hdc, int x1, int y1, int x2, int y2, COLORREF c);
 void FillRectangleBezier(HDC hdc, int x1, int y1, int x2, int y2, COLORREF c);
+
+// ── Convex / Non-Convex fill ──────────────────────────────────────────────
+struct Edge {
+    float x;
+    int   yMax;
+    float mInv;
+};
+void ConvexFill(HDC hdc, vector<FillPoint>& polygon, COLORREF c);
+void NonConvexFill(HDC hdc, vector<FillPoint>& polygon, COLORREF c);
 
 // ── Flood fill functions ──────────────────────────────
 void DrawPolygon(HDC hdc);
@@ -391,6 +406,8 @@ HMENU CreateAppMenu()
     AppendMenu(fillMenu, MF_STRING, ID_FILL_CIRCLE_CIRCLES, L"Circle with Circles");
     AppendMenu(fillMenu, MF_STRING, ID_FILL_SQUARE_HERMIT, L"Square with Hermite");
     AppendMenu(fillMenu, MF_STRING, ID_FILL_RECT_BEZIER, L"Rectangle with Bezier");
+    AppendMenu(fillMenu, MF_STRING, ID_FILL_CONVEX, L"Convex Polygon Fill");
+    AppendMenu(fillMenu, MF_STRING, ID_FILL_NONCONVEX, L"Non-Convex Polygon Fill");
     AppendMenu(fillMenu, MF_STRING, ID_FILL_FLOOD_REC, L"Flood Fill (Recursive)");
     AppendMenu(fillMenu, MF_STRING, ID_FILL_FLOOD_NONREC, L"Flood Fill (Non-Recursive)");
     AppendMenu(menuBar, MF_POPUP, (UINT_PTR)fillMenu, L"Filling");
@@ -441,9 +458,11 @@ void ClearScreen(HWND hwnd)
     bezierRectWaitingSecond = false;
     pointCount = 0;
     polygonDrawn = false;
-    clipState = 0;       // FIX 6: reset unified clip state
+    clipState = 0;       
     polyPoints.clear();
     circleClipWaitingRadius = false;
+    fillPolyPoints.clear();
+    fillPolyCollecting = false;
 
     // Clear the console window so the log is fresh for the next test
     system("cls");
@@ -604,6 +623,25 @@ void RedrawShapes(HDC hdc)
         else if (s.type == "FILL_RECT_BEZIER" && s.params.size() >= 4)
             FillRectangleBezier(hdc, s.params[0], s.params[1],
                 s.params[2], s.params[3], s.color);
+        // ── Convex / Non-Convex fill — params: [n, x0,y0, x1,y1, ...] ──
+        else if ((s.type == "FILL_CONVEX" || s.type == "FILL_NONCONVEX")
+            && s.params.size() >= 1)
+        {
+            int n = s.params[0];
+            if ((int)s.params.size() >= 1 + 2 * n)
+            {
+                vector<FillPoint> poly(n);
+                for (int i = 0; i < n; i++)
+                {
+                    poly[i].x = s.params[1 + 2 * i];
+                    poly[i].y = s.params[2 + 2 * i];
+                }
+                if (s.type == "FILL_CONVEX")
+                    ConvexFill(hdc, poly, s.color);
+                else
+                    NonConvexFill(hdc, poly, s.color);
+            }
+        }
 
         // ── Smiley faces  — Params: [cx, cy, R] ─────────
         else if (s.type == "SMILEY_HAPPY" && s.params.size() >= 3)
@@ -995,7 +1033,6 @@ void FillCircleWithCircles(HDC hdc, int xc, int yc, int R, int quarter, COLORREF
 // ════════════════════════════════════════════════════════════════════════════
 void FillSquareHermite(HDC hdc, int x1, int y1, int x2, int y2, COLORREF c)
 {
-    // ── Hermite basis matrix (row-major) ─────────────────────────────────
     const double H[4][4] = {
         { 1,  0,  0,  0},
         { 0,  1,  0,  0},
@@ -1006,16 +1043,20 @@ void FillSquareHermite(HDC hdc, int x1, int y1, int x2, int y2, COLORREF c)
     const int    numCurves = 80;
     const double tension = 100.0;
 
-    int left = min(x1, x2), right = max(x1, x2);
-    int top = min(y1, y2), bottom = max(y1, y2);
-    int width = right - left;
-    if (width <= 0 || bottom - top <= 0) return;
+    int left = min(x1, x2);
+    int top = min(y1, y2);
+    // ── SQUARE FIX: clamp both dimensions to the shorter side ────────────
+    int side = min(abs(x2 - x1), abs(y2 - y1));
+    int right = left + side;
+    int bottom = top + side;
+    // ─────────────────────────────────────────────────────────────────────
+
+    if (side <= 0) return;
 
     for (int i = 0; i < numCurves; i++)
     {
-        double xCol = left + ((double)i / (numCurves - 1)) * width;
+        double xCol = left + ((double)i / (numCurves - 1)) * side;
 
-        // Geometry matrix G: [P0 | T0 | P1 | T1] as 4×2
         double G[4][2] = {
             {xCol,     (double)top},
             {tension,  0.0},
@@ -1023,7 +1064,6 @@ void FillSquareHermite(HDC hdc, int x1, int y1, int x2, int y2, COLORREF c)
             {-tension, 0.0}
         };
 
-        // C = H * G  (4×2 coefficient matrix)
         double C[4][2] = {};
         for (int r = 0; r < 4; r++)
             for (int col = 0; col < 2; col++)
@@ -1085,6 +1125,97 @@ void FillRectangleBezier(HDC hdc, int x1, int y1, int x2, int y2, COLORREF c)
             BezierPoint(P0x, P0y, P1x, P1y, P2x, P2y, P3x, P3y, t, px, py);
             SetPixel(hdc, (int)round(px), (int)round(py), c);
         }
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// CONVEX / NON-CONVEX POLYGON FILL  (Scan-line / Active Edge Table)
+// ════════════════════════════════════════════════════════════════════════════
+
+// Helper: add one edge to the edge table.
+static void EdgeToTable(FillPoint p1, FillPoint p2, vector<vector<Edge>>& table)
+{
+    if (p1.y == p2.y) return; // skip horizontal edges
+    if (p1.y > p2.y) swap(p1, p2); // ensure p1 is the lower-y endpoint
+
+    Edge e;
+    e.x = (float)p1.x;
+    e.yMax = p2.y;
+    e.mInv = (float)(p2.x - p1.x) / (float)(p2.y - p1.y);
+    table[p1.y].push_back(e);
+}
+
+// Helper: build the full edge table from the polygon.
+static void PolygonToTable(vector<FillPoint>& polygon, vector<vector<Edge>>& table)
+{
+    int n = (int)polygon.size();
+    for (int i = 0; i < n; i++)
+        EdgeToTable(polygon[i], polygon[(i + 1) % n], table);
+}
+
+// Convex fill — always exactly two active edges per scan-line.
+void ConvexFill(HDC hdc, vector<FillPoint>& polygon, COLORREF c)
+{
+    const int HEIGHT = 800;
+    vector<vector<Edge>> table(HEIGHT);
+    PolygonToTable(polygon, table);
+
+    vector<Edge> active;
+
+    for (int y = 0; y < HEIGHT; y++)
+    {
+        for (auto& edge : table[y]) active.push_back(edge);
+
+        active.erase(
+            remove_if(active.begin(), active.end(),
+                [y](const Edge& e) { return y >= e.yMax; }),
+            active.end());
+
+        sort(active.begin(), active.end(),
+            [](const Edge& a, const Edge& b) { return a.x < b.x; });
+
+        if (active.size() >= 2)
+        {
+            int xStart = (int)ceil(active[0].x);
+            int xEnd = (int)floor(active[1].x);
+            for (int x = xStart; x <= xEnd; x++)
+                SetPixel(hdc, x, y, c);
+        }
+
+        for (auto& edge : active) edge.x += edge.mInv;
+    }
+}
+
+// Non-convex fill — pairs of active edges per scan-line.
+void NonConvexFill(HDC hdc, vector<FillPoint>& polygon, COLORREF c)
+{
+    const int HEIGHT = 800;
+    vector<vector<Edge>> table(HEIGHT);
+    PolygonToTable(polygon, table);
+
+    vector<Edge> active;
+
+    for (int y = 0; y < HEIGHT; y++)
+    {
+        for (auto& edge : table[y]) active.push_back(edge);
+
+        active.erase(
+            remove_if(active.begin(), active.end(),
+                [y](const Edge& e) { return y >= e.yMax; }),
+            active.end());
+
+        sort(active.begin(), active.end(),
+            [](const Edge& a, const Edge& b) { return a.x < b.x; });
+
+        for (int i = 0; i + 1 < (int)active.size(); i += 2)
+        {
+            int xStart = (int)ceil(active[i].x);
+            int xEnd = (int)floor(active[i + 1].x);
+            for (int x = xStart; x <= xEnd; x++)
+                SetPixel(hdc, x, y, c);
+        }
+
+        for (auto& edge : active) edge.x += edge.mInv;
     }
 }
 
@@ -1580,6 +1711,18 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             activeAlgorithm = "FILL_RECT_BEZIER"; bezierRectWaitingSecond = false;
             cout << "[FILL] Rectangle with Bezier selected. Click first corner.\n"; break;
 
+            // ── Convex / Non-Convex polygon fill ─────────────────────────────
+        case ID_FILL_CONVEX:
+            activeAlgorithm = "FILL_CONVEX";
+            fillPolyPoints.clear(); fillPolyCollecting = true;
+            cout << "[FILL] Convex Polygon Fill selected.\n";
+            cout << "[FILL] Left-click to add vertices. Right-click to fill.\n"; break;
+        case ID_FILL_NONCONVEX:
+            activeAlgorithm = "FILL_NONCONVEX";
+            fillPolyPoints.clear(); fillPolyCollecting = true;
+            cout << "[FILL] Non-Convex Polygon Fill selected.\n";
+            cout << "[FILL] Left-click to add vertices. Right-click to fill.\n"; break;
+          
             // ── Flood fill ────────────────────────────────────────────
         case ID_FILL_FLOOD_REC:
             activeAlgorithm = "recursive"; useRecursive = true;
@@ -1601,7 +1744,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             cout << "[BONUS] Sad Smiley selected. Click face center.\n"; break;
 
             // ── Clipping ─────────────────────────────────────────────
-            
+
 
         case ID_CLIP_RECT_LINE:
             activeAlgorithm = "CLIP_RECT_LINE";
@@ -1709,8 +1852,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 ReleaseDC(hwnd, hdc);
 
                 Shape s;
-                // FIX 4: save the correct full type string so RedrawShapes
-                //        can match it exactly on repaint/load.
+                
+                
                 if (activeAlgorithm == "DIRECT")           s.type = "CIRCLE_DIRECT";
                 else if (activeAlgorithm == "POLAR")            s.type = "CIRCLE_POLAR";
                 else if (activeAlgorithm == "Iterative_POLAR")  s.type = "CIRCLE_ITER_POLAR";
@@ -1750,7 +1893,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 ReleaseDC(hwnd, hdc);
 
                 Shape s;
-                // FIX 5: map to exact strings used in RedrawShapes
+                
                 if (activeAlgorithm == "Ellipse_Direct")   s.type = "ELLIPSE_DIRECT";
                 else if (activeAlgorithm == "Ellipse_Midpoint") s.type = "ELLIPSE_MIDPOINT";
                 else                                            s.type = "ELLIPSE_POLAR";
@@ -1863,6 +2006,26 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 cout << "[FILL] Bezier rectangle drawn.\n";
                 bezierRectWaitingSecond = false;
             }
+            return 0;
+        }
+        // ── Convex / Non-Convex polygon fill click collection ──────────
+        if ((activeAlgorithm == "FILL_CONVEX" || activeAlgorithm == "FILL_NONCONVEX")
+            && fillPolyCollecting)
+        {
+            fillPolyPoints.push_back({ mx, my });
+            HDC hdc = GetDC(hwnd);
+            // Mark vertex with a small dot
+            for (int dy2 = -2; dy2 <= 2; dy2++)
+                for (int dx2 = -2; dx2 <= 2; dx2++)
+                    SetPixel(hdc, mx + dx2, my + dy2, RGB(255, 0, 0));
+            // Draw edge to previous vertex
+            int n = (int)fillPolyPoints.size();
+            if (n > 1)
+                LineMidpoint(hdc,
+                    fillPolyPoints[n - 2].x, fillPolyPoints[n - 2].y,
+                    mx, my, RGB(0, 0, 0));
+            ReleaseDC(hwnd, hdc);
+            cout << "[FILL] Vertex " << n << " added at (" << mx << "," << my << ").\n";
             return 0;
         }
 
@@ -2226,7 +2389,40 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 curveCollecting = false; curvePoints.clear();
             }
         }
+        // ── Right-click finalises Convex / Non-Convex polygon fill ─────
+        if ((activeAlgorithm == "FILL_CONVEX" || activeAlgorithm == "FILL_NONCONVEX")
+            && fillPolyCollecting && (int)fillPolyPoints.size() >= 3)
+        {
+            HDC hdc = GetDC(hwnd);
+            // Close the polygon outline
+            int n = (int)fillPolyPoints.size();
+            LineMidpoint(hdc,
+                fillPolyPoints[n - 1].x, fillPolyPoints[n - 1].y,
+                fillPolyPoints[0].x, fillPolyPoints[0].y,
+                RGB(0, 0, 255));
+            // Fill
+            if (activeAlgorithm == "FILL_CONVEX")
+                ConvexFill(hdc, fillPolyPoints, currentColor);
+            else
+                NonConvexFill(hdc, fillPolyPoints, currentColor);
+            ReleaseDC(hwnd, hdc);
 
+            // Save shape — params: [n, x0,y0, x1,y1, ...]
+            Shape s;
+            s.type = activeAlgorithm;
+            s.color = currentColor;
+            s.params.push_back(n);
+            for (auto& fp : fillPolyPoints)
+            {
+                s.params.push_back(fp.x);
+                s.params.push_back(fp.y);
+            }
+            shapes.push_back(s);
+            cout << "[FILL] " << activeAlgorithm << " polygon filled ("
+                << n << " vertices).\n";
+            fillPolyPoints.clear();
+            fillPolyCollecting = false;
+        }
         // ── Right-click finalises Polygon Clipping ─────────────────────
         if (activeAlgorithm == "CLIP_RECT_POLY" && (int)polyPoints.size() >= 3)
         {
