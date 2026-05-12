@@ -163,6 +163,36 @@ bool polygonDrawn = false;
 bool useRecursive = true;
 
 // ── 5: Add clipping click-state variables here ────────────────────
+union outcode {
+    struct { unsigned L : 1, R : 1, B : 1, T : 1; };
+	unsigned all : 4;
+};
+typedef bool (*InF)(Point& p, double edge);
+typedef Point(*InterF)( Point& p1, Point& p2, double edge);
+typedef vector <Point> polygonn;
+double xLeft, xRight, yTop, yBottom;
+double x1line, y1line, x2Line, y2Line;
+double sqLeft, sqRight, sqTop, sqBottom;
+int clickCount = 0;
+// ===== Clipping Globals =====
+bool firstClick = false;
+bool secondClick = false;
+bool windowReady = false;
+bool lineFirstClick = false;
+
+int tempX, tempY;
+int clipStage = 0;
+
+vector<Point> polyPoints;
+bool polyCollect = false;
+
+int wx1, wy1;
+int wx2, wy2;
+static int clicks = 0;
+int clipState = 0;
+static int p1x, p1y;
+static int p2x, p2y;
+
 
 // ════════════════════════════════════════════════════════════════════════════
 // FORWARD DECLARATIONS — tells the compiler these functions exist
@@ -206,7 +236,7 @@ void FillCircleWithCircles(HDC hdc, int xc, int yc, int R, int quarter, COLORREF
 void FillSquareHermite(HDC hdc, int x1, int y1, int x2, int y2, COLORREF c);
 void FillRectangleBezier(HDC hdc, int x1, int y1, int x2, int y2, COLORREF c);
 // ──  flood fill functions ──────────────────────────────
-void DrawPolygon(HDC hdc);   
+void DrawPolygon(HDC hdc);
 void RecursiveFloodFill(HDC hdc, int x, int y, COLORREF bc, COLORREF fc);
 void NonRecursiveFloodFill(HDC hdc, int x, int y, COLORREF bc, COLORREF fc);
 bool IsPointInsidePolygon(int x, int y);
@@ -218,6 +248,12 @@ void DrawSmileyHappy(HDC hdc, int cx, int cy, int R, COLORREF c);
 void DrawSmileySad(HDC hdc, int cx, int cy, int R, COLORREF c);
 
 // ── 5: Declare clipping functions here ─────────────────────────────
+outcode GetOutcode(double x, double y, double xleft, double xright, double ybottom , double ytop);
+void VIntersect(double xedge, double x1, double y1, double x2, double y2, double& xi, double& yi);
+void HIntersect(double yedge, double x1, double y1, double x2, double y2, double& xi, double& yi);
+void CoheSuth(HDC hdc, double& x1, double& y1, double& x2, double& y2, double xleft, double xright, double ybottom, double ytop);
+bool pointclip(double x, double y, double xleft, double xright, double ybottom, double ytop);
+
 
 // ════════════════════════════════════════════════════════════════════════════
 // WinMain — entry point of a Win32 GUI application (equivalent to main())
@@ -341,7 +377,14 @@ HMENU CreateAppMenu()
 
 
     // ── 5: Replace placeholder with real Clipping menu ────────────
-    AppendMenu(menuBar, MF_POPUP, (UINT_PTR)CreatePopupMenu(), L"Clipping"); // replace when done
+    HMENU clipMenu = CreatePopupMenu();
+    AppendMenu(clipMenu, MF_STRING, ID_CLIP_SQ_LINE, L"Square Line"); 
+    AppendMenu(clipMenu, MF_STRING, ID_CLIP_SQ_POINT, L"Square Point");
+    AppendMenu(clipMenu, MF_STRING, ID_CLIP_RECT_LINE, L"Rectangle Line");
+    AppendMenu(clipMenu, MF_STRING, ID_CLIP_RECT_POLY, L"Rectangle Poly");
+    AppendMenu(clipMenu, MF_STRING, ID_CLIP_RECT_POINT, L"Rectangle Point");
+
+    AppendMenu(menuBar, MF_POPUP, (UINT_PTR)clipMenu, L"Clipping");
 
     // ── Bonus menu ────────────────────────────────────────
     HMENU bonusMenu = CreatePopupMenu();
@@ -1278,6 +1321,135 @@ void DrawSmileySad(HDC hdc, int cx, int cy, int R, COLORREF c)
 }
 
 // ── 5: Add all clipping functions here ─────────────────────────────
+void DrawRectangleWindow(HDC hdc)
+{
+    COLORREF c = RGB(0, 0, 0);
+
+    LineMidpoint(hdc, xLeft, yTop, xRight, yTop, c);       // top
+    LineMidpoint(hdc, xLeft, yBottom, xRight, yBottom, c); // bottom
+    LineMidpoint(hdc, xLeft, yTop, xLeft, yBottom, c);     // left
+    LineMidpoint(hdc, xRight, yTop, xRight, yBottom, c);   // right
+}
+void DrawSquareWindow(HDC hdc)
+{
+    COLORREF c = RGB(0, 0, 0);
+
+    LineMidpoint(hdc, sqLeft, sqTop, sqRight, sqTop, c);
+    LineMidpoint(hdc, sqLeft, sqBottom, sqRight, sqBottom, c);
+    LineMidpoint(hdc, sqLeft, sqTop, sqLeft, sqBottom, c);
+    LineMidpoint(hdc, sqRight, sqTop, sqRight, sqBottom, c);
+}
+outcode GetOutCode(double x, double y, double xleft, double xright, double ybottom, double ytop)
+{
+    outcode out;
+	out.all = 0;
+    if (x < xleft) out.L = 1;
+    else if (x > xright) out.R = 1;
+    if (y < ytop) out.T = 1;
+    else if (y > ybottom) out.B = 1;
+	return out;
+}
+void VIntersect(double xedge, double x1, double y1, double x2, double y2, double& xi, double& yi)
+{
+    xi = xedge;
+    yi = y1 + (xedge - x1) * (y2- y1) / (x2 - x1);
+}
+void HIntersect(double yedge, double x1, double y1, double x2, double y2, double& xi, double& yi)
+{
+    yi = yedge;
+    xi = x1 + (yedge - y1) * (x2 - x1) / (y2 - y1);
+}
+void CoheSuth(HDC hdc,double& x1, double& y1, double& x2, double& y2, double xleft, double xright, double ybottom, double ytop)
+{
+    outcode out1 = GetOutCode(x1, y1, xleft, xright, ybottom, ytop);
+    outcode out2 = GetOutCode(x2, y2, xleft, xright, ybottom, ytop);
+    while ((out1.all || out2.all) && !(out1.all & out2.all)) {
+        double xi, yi;
+        if (out1.all) {
+            if (out1.T) HIntersect(ytop, x1, y1, x2, y2, xi, yi);
+            else if (out1.B) HIntersect(ybottom, x1, y1, x2, y2, xi, yi);
+            else if (out1.L) VIntersect(xleft, x1, y1, x2, y2, xi, yi);
+            else if (out1.R) VIntersect(xright, x1, y1, x2, y2, xi, yi);
+            x1 = xi; y1 = yi;
+            out1 = GetOutCode(x1, y1, xleft, xright, ybottom, ytop);
+        }
+        else {
+            if (out2.T) HIntersect(ytop, x1, y1, x2, y2, xi, yi);
+            else if (out2.B) HIntersect(ybottom, x1, y1, x2, y2, xi, yi);
+            else if (out2.L) VIntersect(xleft, x1, y1, x2, y2, xi, yi);
+            else if (out2.R) VIntersect(xright, x1, y1, x2, y2, xi, yi);
+            x2 = xi; y2 = yi;
+            out2 = GetOutCode(x2,y2,xleft,xright,ybottom ,ytop);
+		}
+    }
+    if (!out1.all && !out2.all) {
+		MoveToEx(hdc, round(x1), round(y1), NULL);
+        LineTo(hdc, round(x2), round(y2));
+		
+    }
+}
+bool pointclip(double x, double y, double xleft, double xright, double ybottom, double ytop) {
+    return (x >= xleft && x <= xright && y >= ytop && y <= ybottom);
+}
+bool Inleft(Point& p, double xleft) { return p.x >= xleft; }
+bool Inright(Point& p, double xright) { return p.x <= xright; }
+bool Intop(Point& p, double ytop) { return p.y <= ytop; }
+bool Inbottom(Point& p, double ybottom) { return p.y >= ybottom; }
+Point VIntersect(Point& p1, Point& p2, double xedge) {
+    Point r;
+    r.x= xedge;
+    r.y = p1.y + (xedge - p1.x) * (p2.y - p1.y) / (p2.x - p1.x);
+    return r;
+}
+Point HIntersect(Point& p1, Point& p2, double yedge) {
+    Point r;
+    r.y = yedge;
+    r.x = p1.x + (yedge - p1.y) * (p2.x - p1.x) / (p2.y - p1.y);
+    return r;
+}
+polygonn clipEdge(polygonn p, double edge, InF In, InterF Intersect) {
+    polygonn result;
+    int n = p.size();
+	Point v1 = p[n - 1];
+	bool In1 = In(v1, edge);
+    for (int i = 0; i < n; i++) {
+		Point v2 = p[i];
+        bool In2 = In(v2, edge);
+        if (!In1 && In2) {
+            result.push_back(Intersect(v1, v2, edge));
+            result.push_back(v2);
+        }
+        else if (In1 && In2) {
+            result.push_back(v2);
+            
+        }
+        else if (In1) {
+            result.push_back(Intersect(v1, v2, edge));
+        }
+        v1 = v2;
+        In1 = In2;
+    }
+   
+	return result;
+}
+void polygonclip(HDC hdc,Point *p,int n, double xleft, double xright, double ybottom, double ytop) {
+    polygonn vlist;
+    for (int i = 0; i < n; i++) {
+		vlist.push_back(Point(p[i].x, p[i].y));
+    }
+	vlist = clipEdge(vlist, xleft, Inleft, VIntersect);
+	vlist = clipEdge(vlist, xright, Inright, VIntersect);
+	vlist = clipEdge(vlist, ytop, Intop, HIntersect);
+	vlist = clipEdge(vlist, ybottom, Inbottom, HIntersect);
+	Point v1 = vlist[vlist.size() - 1];
+    
+    for (int i = 0; i < (int) vlist.size(); i++) {
+		Point v2 = vlist[i];
+		MoveToEx(hdc, round(v1.x), round(v1.y), NULL);
+        LineMidpoint(hdc, round(v1.x), round(v1.y), round(v2.x), round(v2.y), RGB(0, 0, 0));
+		v1 = v2;
+    }
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // WndProc — the heart of the Win32 app. Every event (click, repaint, menu
@@ -1508,7 +1680,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             SetWindowText(hwnd, L"Non-Recursive Flood Fill — Click 5 points for polygon");
             cout << "[FLOOD] Non-Recursive Flood Fill selected. Click 5 points.\n";
             break;
-  
+
             // ── Smiley faces ───────────────────────
         case ID_BONUS_HAPPY:
             activeAlgorithm = "SMILEY_HAPPY";
@@ -1525,15 +1697,45 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             break;
 
             // ── 5: Add clipping cases here ────────────────────
-        }
-        return 0;
-    }
+        case ID_CLIP_RECT_LINE:
 
-    // ── WM_LBUTTONDOWN: fires on every left mouse click ───────────────
-    // LOWORD(lParam) = mouse X,  HIWORD(lParam) = mouse Y
-    // The logic here is a two-click system:
-    //   Click 1 → store start point, set waitingForSecondClick = true
-    //   Click 2 → draw the shape, save to shapes vector, reset state
+            activeAlgorithm = "CLIP_RECT_LINE";
+
+            clipStage = 0;
+            windowReady = false;
+
+            cout << "[RECT] Click 3 times\n";
+            break;
+
+        case ID_CLIP_SQ_LINE:
+
+    activeAlgorithm = "CLIP_SQ_LINE";
+
+    clipStage = 0;
+    windowReady = false;
+
+    cout << "[SQUARE] Click center then side\n";
+    break;
+        
+        case ID_CLIP_SQ_POINT:
+            activeAlgorithm = "CLIP_SQ_POINT";
+            cout << "[SQ POINT CLIP] Select 2 points for square\n";
+            break;
+
+        case ID_CLIP_RECT_POLY:
+            activeAlgorithm = "CLIP_RECT_POLY";
+            cout << "[POLY-RECT CLIP] Select 2 points for clipping rectangle\n";
+			break;
+        case ID_CLIP_RECT_POINT:
+            activeAlgorithm = "CLIP_RECT_POINT";
+			cout << "[POINT-RECT CLIP] Select 2 points for clipping rectangle\n";
+    }
+    }
+        // ── WM_LBUTTONDOWN: fires on every left mouse click ───────────────
+        // LOWORD(lParam) = mouse X,  HIWORD(lParam) = mouse Y
+        // The logic here is a two-click system:
+        //   Click 1 → store start point, set waitingForSecondClick = true
+        //   Click 2 → draw the shape, save to shapes vector, reset state
     case WM_LBUTTONDOWN:
     {
         int mx = LOWORD(lParam);
@@ -1750,55 +1952,55 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             }
             return 0;
         }
-            // ── Flood Fill ─────────────────────────────────────────────────
-         if (activeAlgorithm == "recursive" ||
-                activeAlgorithm == "non_recursive")
+        // ── Flood Fill ─────────────────────────────────────────────────
+        if (activeAlgorithm == "recursive" ||
+            activeAlgorithm == "non_recursive")
+        {
+            HDC hdc = GetDC(hwnd);
+
+            if (!polygonDrawn)
             {
-                HDC hdc = GetDC(hwnd);
+                pts[pointCount++] = { mx, my };
+                SetPixel(hdc, mx, my, RGB(255, 0, 0));
+                SetPixel(hdc, mx + 1, my, RGB(255, 0, 0));
+                SetPixel(hdc, mx, my + 1, RGB(255, 0, 0));
+                SetPixel(hdc, mx + 1, my + 1, RGB(255, 0, 0));
+                cout << "[FLOOD] Point " << pointCount << " added.\n";
 
-                if (!polygonDrawn)
+                if (pointCount == 5)
                 {
-                    pts[pointCount++] = { mx, my };
-                    SetPixel(hdc, mx, my, RGB(255, 0, 0));
-                    SetPixel(hdc, mx + 1, my, RGB(255, 0, 0));
-                    SetPixel(hdc, mx, my + 1, RGB(255, 0, 0));
-                    SetPixel(hdc, mx + 1, my + 1, RGB(255, 0, 0));
-                    cout << "[FLOOD] Point " << pointCount << " added.\n";
-
-                    if (pointCount == 5)
+                    DrawPolygon(hdc);
+                    polygonDrawn = true;
+                    cout << "[FLOOD] Polygon complete. Click INSIDE to fill.\n";
+                }
+            }
+            else
+            {
+                if (IsPointInsidePolygon(mx, my))
+                {
+                    COLORREF bc = RGB(0, 0, 0), fc = currentColor;
+                    if (activeAlgorithm == "recursive")
                     {
-                        DrawPolygon(hdc);
-                        polygonDrawn = true;
-                        cout << "[FLOOD] Polygon complete. Click INSIDE to fill.\n";
+                        RecursiveFloodFill(hdc, mx, my, bc, fc);
+                        cout << "[FLOOD] Recursive fill done.\n";
+                    }
+                    else
+                    {
+                        NonRecursiveFloodFill(hdc, mx, my, bc, fc);
+                        cout << "[FLOOD] Non-recursive fill done.\n";
                     }
                 }
                 else
                 {
-                    if (IsPointInsidePolygon(mx, my))
-                    {
-                        COLORREF bc = RGB(0, 0, 0), fc = currentColor;
-                        if (activeAlgorithm == "recursive")
-                        {
-                            RecursiveFloodFill(hdc, mx, my, bc, fc);
-                            cout << "[FLOOD] Recursive fill done.\n";
-                        }
-                        else
-                        {
-                            NonRecursiveFloodFill(hdc, mx, my, bc, fc);
-                            cout << "[FLOOD] Non-recursive fill done.\n";
-                        }
-                    }
-                    else
-                    {
-                        MessageBox(hwnd, L"Click INSIDE the polygon!",
-                            L"Outside Polygon", MB_OK | MB_ICONWARNING);
-                    }
+                    MessageBox(hwnd, L"Click INSIDE the polygon!",
+                        L"Outside Polygon", MB_OK | MB_ICONWARNING);
                 }
+            }
 
-                ReleaseDC(hwnd, hdc);
-                return 0;
-         }
-           
+            ReleaseDC(hwnd, hdc);
+            return 0;
+        }
+
 
         // ── Smiley face click handling ─────────────────────
         if ((activeAlgorithm == "SMILEY_HAPPY" || activeAlgorithm == "SMILEY_SAD")
@@ -1842,12 +2044,215 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             return 0;
         }
 
-        // ── 5: Add clipping click handling here ────────────────
-        // Rectangle clipping window: 2 clicks for top-left and bottom-right.
+        if (activeAlgorithm == "CLIP_RECT_LINE" ||
+            activeAlgorithm == "CLIP_RECT_POINT" ||
+            activeAlgorithm == "CLIP_RECT_POLY")
+        {
+            if (clipState < 3)
+            {
+                if (clipState == 0)
+                {
+                    p1x = mx;
+                    p1y = my;
+                    clipState = 1;
+                    cout << "P1\n";
+                }
+                else if (clipState == 1)
+                {
+                    p2x = mx;
+                    p2y = my;
+                    clipState = 2;
+                    cout << "P2\n";
+                }
+                else if (clipState == 2)
+                {
+                    xLeft = min(p1x, p2x);
+                    xRight = max(p1x, p2x);
 
-        break;
+                    yTop = p1y;
+                    yBottom = my;
+
+                    if (yTop > yBottom) swap(yTop, yBottom);
+
+                    HDC hdc = GetDC(hwnd);
+                    DrawRectangleWindow(hdc);
+                    ReleaseDC(hwnd, hdc);
+
+                    clipState = 3;
+
+                    cout << "Window Ready\n";
+                }
+                return 0;
+            }
+            if (activeAlgorithm == "CLIP_RECT_LINE")
+            {
+                if (clipState == 3)
+                {
+                    x1Line = mx;
+                    y1Line = my;
+                    clipState = 4;
+                    cout << "Line start\n";
+                }
+                else
+                {
+                    double x1 = x1Line, y1 = y1Line;
+                    double x2 = mx, y2 = my;
+
+                    HDC hdc = GetDC(hwnd);
+
+                    CoheSuth(hdc, x1, y1, x2, y2,
+                        xLeft, xRight, yBottom, yTop);
+
+                    DrawRectangleWindow(hdc);
+
+                    ReleaseDC(hwnd, hdc);
+
+                    clipState = 3;
+
+                    cout << "Clipped\n";
+                }
+                return 0;
+            }
+            if (activeAlgorithm == "CLIP_RECT_POINT")
+            {
+                HDC hdc = GetDC(hwnd);
+
+                if (pointclip(mx, my, xLeft, xRight, yBottom, yTop))
+                    SetPixel(hdc, mx, my, RGB(0, 255, 0));
+                else
+                    SetPixel(hdc, mx, my, RGB(255, 0, 0));
+
+                DrawRectangleWindow(hdc);
+
+                ReleaseDC(hwnd, hdc);
+
+                return 0;
+            }
+            if (activeAlgorithm == "CLIP_RECT_POLY")
+            {
+                if (clipState == 3)
+                {
+                    Point p;
+                    p.x = mx;
+                    p.y = my;
+
+                    polyPoints.push_back(p);
+
+                    HDC hdc = GetDC(hwnd);
+
+                    Ellipse(hdc, mx - 2, my - 2, mx + 2, my + 2);
+
+                    if (polyPoints.size() > 1)
+                    {
+                        LineMidpoint(hdc,
+                            polyPoints[polyPoints.size() - 2].x,
+                            polyPoints[polyPoints.size() - 2].y,
+                            mx, my,
+                            RGB(0, 0, 255));
+                    }
+
+                    ReleaseDC(hwnd, hdc);
+                }
+
+                return 0;
+            }
+            if (activeAlgorithm == "CLIP_SQ_LINE" ||
+                activeAlgorithm == "CLIP_SQ_POINT")
+            {
+                if (clipState < 3)
+                {
+                    if (clipState == 0)
+                    {
+                        p1x = mx;
+                        p1y = my;
+                        clipState = 1;
+
+                        cout << "Center set\n";
+                    }
+                    else
+                    {
+                        int side = max(abs(mx - p1x), abs(my - p1y));
+
+                        sqLeft = p1x - side;
+                        sqRight = p1x + side;
+                        sqTop = p1y - side;
+                        sqBottom = p1y + side;
+
+                        HDC hdc = GetDC(hwnd);
+                        DrawSquareWindow(hdc);
+                        ReleaseDC(hwnd, hdc);
+
+                        clipState = 3; // window ready
+
+                        cout << "Square ready\n";
+                    }
+
+                    return 0;
+                }
+                if (activeAlgorithm == "CLIP_SQ_LINE")
+                {
+                    if (clipState == 3)
+                    {
+                        x1Line = mx;
+                        y1Line = my;
+
+                        clipState = 4;
+
+                        cout << "Line start\n";
+                    }
+                    else
+                    {
+                        double x1 = x1Line;
+                        double y1 = y1Line;
+                        double x2 = mx;
+                        double y2 = my;
+
+                        HDC hdc = GetDC(hwnd);
+
+                        CoheSuth(hdc,
+                            x1, y1,
+                            x2, y2,
+                            sqLeft, sqRight,
+                            sqBottom, sqTop);
+
+                        DrawSquareWindow(hdc);
+
+                        ReleaseDC(hwnd, hdc);
+
+                        clipState = 3;
+
+                        cout << "Line clipped\n";
+                    }
+
+                    return 0;
+                }
+                if (activeAlgorithm == "CLIP_SQ_POINT")
+                {
+                    HDC hdc = GetDC(hwnd);
+
+                    if (pointclip(mx, my,
+                        sqLeft, sqRight,
+                        sqBottom, sqTop))
+                    {
+                        SetPixel(hdc, mx, my, RGB(0, 255, 0));
+                        cout << "INSIDE\n";
+                    }
+                    else
+                    {
+                        SetPixel(hdc, mx, my, RGB(255, 0, 0));
+                        cout << "OUTSIDE\n";
+                    }
+
+                    DrawSquareWindow(hdc);
+
+                    ReleaseDC(hwnd, hdc);
+
+                    return 0;
+                }
+            }
+
+        }
     }
-
     // ── right-click finalises Cardinal Spline ────────
     case WM_RBUTTONDOWN:
     {
@@ -1883,6 +2288,44 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 curveCollecting = false;
                 curvePoints.clear();
             }
+        }
+        // ── Polygon Clipping Finish ─────────────────────────
+       // ===== Finish Polygon Clipping =====
+        if (activeAlgorithm == "CLIP_RECT_POLY")
+        {
+            if (polyPoints.size() >= 3)
+            {
+                HDC hdc = GetDC(hwnd);
+
+                // close polygon
+                LineMidpoint(
+                    hdc,
+                    polyPoints.back().x,
+                    polyPoints.back().y,
+                    polyPoints[0].x,
+                    polyPoints[0].y,
+                    RGB(0, 0, 255)
+                );
+
+                polygonclip(
+                    hdc,
+                    polyPoints.data(),
+                    polyPoints.size(),
+                    xLeft,
+                    xRight,
+                    yBottom,
+                    yTop
+                );
+
+                ReleaseDC(hwnd, hdc);
+
+                cout << "[POLY] Clipping done\n";
+            }
+
+            polyPoints.clear();
+            polyCollect = false;
+
+            return 0;
         }
         return 0;
     }
