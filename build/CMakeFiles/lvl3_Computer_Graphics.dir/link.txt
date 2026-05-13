@@ -1,0 +1,3 @@
+"C:\Program Files\CMake\bin\cmake.exe" -E rm -f CMakeFiles\lvl3_Computer_Graphics.dir/objects.a
+C:\msys64\ucrt64\bin\ar.exe qc CMakeFiles\lvl3_Computer_Graphics.dir/objects.a @CMakeFiles\lvl3_Computer_Graphics.dir\objects1.rsp
+C:\msys64\ucrt64\bin\g++.exe -g -Wl,--whole-archive CMakeFiles\lvl3_Computer_Graphics.dir/objects.a -Wl,--no-whole-archive -o lvl3_Computer_Graphics.exe -Wl,--out-implib,liblvl3_Computer_Graphics.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\lvl3_Computer_Graphics.dir\linkLibs.rsp

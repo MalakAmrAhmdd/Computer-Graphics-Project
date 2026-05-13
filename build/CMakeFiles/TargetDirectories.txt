@@ -1,0 +1,3 @@
+C:/Users/DELL/Documents/GitHub/Computer-Graphics-Project/build/CMakeFiles/lvl3_Computer_Graphics.dir
+C:/Users/DELL/Documents/GitHub/Computer-Graphics-Project/build/CMakeFiles/edit_cache.dir
+C:/Users/DELL/Documents/GitHub/Computer-Graphics-Project/build/CMakeFiles/rebuild_cache.dir

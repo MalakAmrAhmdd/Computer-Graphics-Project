@@ -1,0 +1,56 @@
+[
+{
+  "directory": "C:/Users/DELL/Documents/GitHub/Computer-Graphics-Project/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe   -g -std=gnu++23 -o CMakeFiles\\lvl3_Computer_Graphics.dir\\project\\main.cpp.obj -c C:\\Users\\DELL\\Documents\\GitHub\\Computer-Graphics-Project\\project\\main.cpp",
+  "file": "C:/Users/DELL/Documents/GitHub/Computer-Graphics-Project/project/main.cpp",
+  "output": "CMakeFiles/lvl3_Computer_Graphics.dir/project/main.cpp.obj"
+},
+{
+  "directory": "C:/Users/DELL/Documents/GitHub/Computer-Graphics-Project/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe   -g -std=gnu++23 -o CMakeFiles\\lvl3_Computer_Graphics.dir\\project\\implementation\\ellipse.cpp.obj -c C:\\Users\\DELL\\Documents\\GitHub\\Computer-Graphics-Project\\project\\implementation\\ellipse.cpp",
+  "file": "C:/Users/DELL/Documents/GitHub/Computer-Graphics-Project/project/implementation/ellipse.cpp",
+  "output": "CMakeFiles/lvl3_Computer_Graphics.dir/project/implementation/ellipse.cpp.obj"
+},
+{
+  "directory": "C:/Users/DELL/Documents/GitHub/Computer-Graphics-Project/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe   -g -std=gnu++23 -o CMakeFiles\\lvl3_Computer_Graphics.dir\\project\\implementation\\circles.cpp.obj -c C:\\Users\\DELL\\Documents\\GitHub\\Computer-Graphics-Project\\project\\implementation\\circles.cpp",
+  "file": "C:/Users/DELL/Documents/GitHub/Computer-Graphics-Project/project/implementation/circles.cpp",
+  "output": "CMakeFiles/lvl3_Computer_Graphics.dir/project/implementation/circles.cpp.obj"
+},
+{
+  "directory": "C:/Users/DELL/Documents/GitHub/Computer-Graphics-Project/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe   -g -std=gnu++23 -o CMakeFiles\\lvl3_Computer_Graphics.dir\\project\\implementation\\lines.cpp.obj -c C:\\Users\\DELL\\Documents\\GitHub\\Computer-Graphics-Project\\project\\implementation\\lines.cpp",
+  "file": "C:/Users/DELL/Documents/GitHub/Computer-Graphics-Project/project/implementation/lines.cpp",
+  "output": "CMakeFiles/lvl3_Computer_Graphics.dir/project/implementation/lines.cpp.obj"
+},
+{
+  "directory": "C:/Users/DELL/Documents/GitHub/Computer-Graphics-Project/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe   -g -std=gnu++23 -o CMakeFiles\\lvl3_Computer_Graphics.dir\\project\\implementation\\curves.cpp.obj -c C:\\Users\\DELL\\Documents\\GitHub\\Computer-Graphics-Project\\project\\implementation\\curves.cpp",
+  "file": "C:/Users/DELL/Documents/GitHub/Computer-Graphics-Project/project/implementation/curves.cpp",
+  "output": "CMakeFiles/lvl3_Computer_Graphics.dir/project/implementation/curves.cpp.obj"
+},
+{
+  "directory": "C:/Users/DELL/Documents/GitHub/Computer-Graphics-Project/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe   -g -std=gnu++23 -o CMakeFiles\\lvl3_Computer_Graphics.dir\\project\\implementation\\filling.cpp.obj -c C:\\Users\\DELL\\Documents\\GitHub\\Computer-Graphics-Project\\project\\implementation\\filling.cpp",
+  "file": "C:/Users/DELL/Documents/GitHub/Computer-Graphics-Project/project/implementation/filling.cpp",
+  "output": "CMakeFiles/lvl3_Computer_Graphics.dir/project/implementation/filling.cpp.obj"
+},
+{
+  "directory": "C:/Users/DELL/Documents/GitHub/Computer-Graphics-Project/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe   -g -std=gnu++23 -o CMakeFiles\\lvl3_Computer_Graphics.dir\\project\\implementation\\globals.cpp.obj -c C:\\Users\\DELL\\Documents\\GitHub\\Computer-Graphics-Project\\project\\implementation\\globals.cpp",
+  "file": "C:/Users/DELL/Documents/GitHub/Computer-Graphics-Project/project/implementation/globals.cpp",
+  "output": "CMakeFiles/lvl3_Computer_Graphics.dir/project/implementation/globals.cpp.obj"
+},
+{
+  "directory": "C:/Users/DELL/Documents/GitHub/Computer-Graphics-Project/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe   -g -std=gnu++23 -o CMakeFiles\\lvl3_Computer_Graphics.dir\\project\\implementation\\smiley_face.cpp.obj -c C:\\Users\\DELL\\Documents\\GitHub\\Computer-Graphics-Project\\project\\implementation\\smiley_face.cpp",
+  "file": "C:/Users/DELL/Documents/GitHub/Computer-Graphics-Project/project/implementation/smiley_face.cpp",
+  "output": "CMakeFiles/lvl3_Computer_Graphics.dir/project/implementation/smiley_face.cpp.obj"
+},
+{
+  "directory": "C:/Users/DELL/Documents/GitHub/Computer-Graphics-Project/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe   -g -std=gnu++23 -o CMakeFiles\\lvl3_Computer_Graphics.dir\\project\\implementation\\clipping.cpp.obj -c C:\\Users\\DELL\\Documents\\GitHub\\Computer-Graphics-Project\\project\\implementation\\clipping.cpp",
+  "file": "C:/Users/DELL/Documents/GitHub/Computer-Graphics-Project/project/implementation/clipping.cpp",
+  "output": "CMakeFiles/lvl3_Computer_Graphics.dir/project/implementation/clipping.cpp.obj"
+}
+]

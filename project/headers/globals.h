@@ -69,7 +69,7 @@ extern bool   circleClipWaitingRadius;
 extern int clipState;
 extern bool polyCollect;
 
-extern POINT pts[5];
+extern POINT pts[4];
 extern int pointCount;
 extern bool polygonDrawn;
 extern bool useRecursive;

@@ -2,6 +2,7 @@
 #include "../headers/lines.h"
 #include "../headers/shapes.h"
 #include "../headers/globals.h"
+#include "../headers/circles.h"
 #include <windows.h>
 #include <cmath>
 #include <stack>
@@ -27,48 +28,55 @@ using namespace std;
 // ════════════════════════════════════════════════════════════════════════════
 // Fill the selected quarter of a circle with horizontal scan lines.
 // Scan lines go from the circle boundary to the vertical diameter (center column).
+// Fill the selected quarter of a circle with horizontal scan lines.
 void FillCircleWithLines(HDC hdc, int xc, int yc, int R, int quarter, COLORREF c)
 {
-    // Top quarters scan upward (smaller y), bottom scan downward
     int yStart = (quarter == 1 || quarter == 2) ? yc - R : yc;
     int yEnd = (quarter == 1 || quarter == 2) ? yc : yc + R;
 
     for (int y = yStart; y <= yEnd; y++)
     {
         int dy = y - yc;
-        if (dy * dy > R * R) continue; // outside circle, skip
-
-        // Horizontal reach at this y
+        if (dy * dy > R * R) continue;
         int dx = (int)round(sqrt((double)(R * R - dy * dy)));
-
-        // Right half (Q1, Q4): line from center column to right boundary
-        // Left  half (Q2, Q3): line from left boundary to center column
         int lx, rx;
         if (quarter == 1 || quarter == 4) { lx = xc;      rx = xc + dx; }
         else { lx = xc - dx; rx = xc; }
-
         LineMidpoint(hdc, lx, y, rx, y, c);
     }
+
+    // Full circle outline
+    CircleMidpoint(hdc, xc, yc, R, c);
+
+    // Two bounding radii for the selected quarter
+    // Q1=top-right, Q2=top-left, Q3=bottom-left, Q4=bottom-right
+    int ex1, ey1, ex2, ey2;
+    switch (quarter)
+    {
+    case 1: ex1 = xc;     ey1 = yc - R; ex2 = xc + R; ey2 = yc;     break; 
+    case 2: ex1 = xc - R; ey1 = yc;     ex2 = xc;     ey2 = yc - R; break; 
+    case 3: ex1 = xc;     ey1 = yc + R; ex2 = xc - R; ey2 = yc;     break; 
+    default:ex1 = xc + R; ey1 = yc;     ex2 = xc;     ey2 = yc + R; break; 
+    }
+    LineMidpoint(hdc, xc, yc, ex1, ey1, c);
+    LineMidpoint(hdc, xc, yc, ex2, ey2, c);
 }
 
 // Fill the selected quarter of a circle with concentric circle arcs.
 // Each ring is 5 pixels smaller than the last, down to radius 1.
 void FillCircleWithCircles(HDC hdc, int xc, int yc, int R, int quarter, COLORREF c)
 {
-    // Angle ranges (screen coords: θ=0 → right, θ=π/2 → bottom, θ=π → left, θ=3π/2 → top)
     double tStart, tEnd;
     switch (quarter)
     {
-        case 1: tStart = -M_PI / 2.0; tEnd = 0;            break; // top-right
-        case 2: tStart = M_PI;       tEnd = 3 * M_PI / 2.0; break; // top-left
-        case 3: tStart = M_PI / 2.0; tEnd = M_PI;         break; // bottom-left
-        default:tStart = 0;          tEnd = M_PI / 2.0;   break; // bottom-right (Q4)
+    case 1:  tStart = -M_PI / 2.0; tEnd = 0;              break; // top-right
+    case 2:  tStart = M_PI;     tEnd = 3 * M_PI / 2.0;    break; // top-left
+    case 3:  tStart = M_PI / 2.0; tEnd = M_PI;           break; // bottom-left
+    default: tStart = 0;        tEnd = M_PI / 2.0;       break; // bottom-right (Q4)
     }
-
-    // Draw concentric arcs at every 5-pixel radius step
-    for (int r = 5; r <= R; r += 5)
+    for (int r = 1; r <= R; r++)
     {
-        double dtheta = 1.0 / r; // arc-length ≈ 1 px per step (from lecture polar circle)
+        double dtheta = 1.0 / r;
         for (double theta = tStart; theta <= tEnd + dtheta / 2.0; theta += dtheta)
         {
             int x = xc + (int)round(r * cos(theta));
@@ -76,6 +84,21 @@ void FillCircleWithCircles(HDC hdc, int xc, int yc, int R, int quarter, COLORREF
             SetPixel(hdc, x, y, c);
         }
     }
+
+    // Full circle outline
+    CircleMidpoint(hdc, xc, yc, R, c);
+
+    // Two bounding radii for the selected quarter
+    int ex1, ey1, ex2, ey2;
+    switch (quarter)
+    {
+    case 1: ex1 = xc;     ey1 = yc - R; ex2 = xc + R; ey2 = yc;     break;
+    case 2: ex1 = xc - R; ey1 = yc;     ex2 = xc;     ey2 = yc - R; break;
+    case 3: ex1 = xc;     ey1 = yc + R; ex2 = xc - R; ey2 = yc;     break;
+    default:ex1 = xc + R; ey1 = yc;     ex2 = xc;     ey2 = yc + R; break;
+    }
+    LineMidpoint(hdc, xc, yc, ex1, ey1, c);
+    LineMidpoint(hdc, xc, yc, ex2, ey2, c);
 }
 // ════════════════════════════════════════════════════════════════════════════
 // FILL SQUARE WITH HERMITE CURVES
@@ -295,9 +318,9 @@ void NonConvexFill(HDC hdc, vector<FillPoint>& polygon, COLORREF c)
 // ════════════════════════════════════════════════════════════════════════════
 void DrawPolygon(HDC hdc)
 {
-    for (int i = 0; i < 5; i++)
+    for (int i = 0; i < 4; i++)
     {
-        int next = (i + 1) % 5;
+        int next = (i + 1) % 4;
         LineMidpoint(hdc, pts[i].x, pts[i].y, pts[next].x, pts[next].y, RGB(0, 0, 0));
     }
 }
@@ -333,7 +356,7 @@ void NonRecursiveFloodFill(HDC hdc, int x, int y, COLORREF bc, COLORREF fc)
 bool IsPointInsidePolygon(int x, int y)
 {
     bool inside = false;
-    for (int i = 0, j = 4; i < 5; j = i++)
+    for (int i = 0, j = 3; i < 4; j = i++)
     {
         int xi = pts[i].x, yi = pts[i].y;
         int xj = pts[j].x, yj = pts[j].y;
