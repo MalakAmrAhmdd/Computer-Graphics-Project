@@ -649,8 +649,150 @@ void RedrawShapes(HDC hdc)
         else if (s.type == "SMILEY_SAD" && s.params.size() >= 3)
             DrawSmileySad(hdc, s.params[0], s.params[1], s.params[2], s.color);
 
-        // ── 5: Clipping doesn't need redraw entries —
-        //    it operates on existing shapes using the clipping window
+        // ── 5: Clipping redraw — replays saved clipped results ──────────
+        // Each entry stores the window bounds + the already-clipped geometry,
+        // so we just re-draw the result directly (no re-clipping needed).
+
+        // CLIP_RECT_LINE — params: [xL, yT, xR, yB, lx1, ly1, lx2, ly2]
+        // Re-draws the clipping window border in black, then re-clips and
+        // draws the surviving segment in the saved color.
+        else if (s.type == "CLIP_RECT_LINE" && s.params.size() >= 8)
+        {
+            double wL = s.params[0], wT = s.params[1],
+                wR = s.params[2], wB = s.params[3];
+            // Redraw the rectangle window border in black
+            LineMidpoint(hdc, (int)wL, (int)wT, (int)wR, (int)wT, RGB(0, 0, 0));
+            LineMidpoint(hdc, (int)wL, (int)wB, (int)wR, (int)wB, RGB(0, 0, 0));
+            LineMidpoint(hdc, (int)wL, (int)wT, (int)wL, (int)wB, RGB(0, 0, 0));
+            LineMidpoint(hdc, (int)wR, (int)wT, (int)wR, (int)wB, RGB(0, 0, 0));
+            // Re-clip the original line with the saved window and draw in saved color
+            double lx1 = s.params[4], ly1 = s.params[5],
+                lx2 = s.params[6], ly2 = s.params[7];
+            COLORREF saved = currentColor;
+            currentColor = s.color;
+            CoheSuth(hdc, lx1, ly1, lx2, ly2, wL, wR, wB, wT);
+            currentColor = saved;
+        }
+
+        // CLIP_RECT_POINT — params: [xL, yT, xR, yB, px, py]
+        // Re-draws the clipping window border in black, then draws the
+        // accepted point as a filled circle in the saved color.
+        else if (s.type == "CLIP_RECT_POINT" && s.params.size() >= 6)
+        {
+            double wL = s.params[0], wT = s.params[1],
+                wR = s.params[2], wB = s.params[3];
+            // Redraw the rectangle window border in black
+            LineMidpoint(hdc, (int)wL, (int)wT, (int)wR, (int)wT, RGB(0, 0, 0));
+            LineMidpoint(hdc, (int)wL, (int)wB, (int)wR, (int)wB, RGB(0, 0, 0));
+            LineMidpoint(hdc, (int)wL, (int)wT, (int)wL, (int)wB, RGB(0, 0, 0));
+            LineMidpoint(hdc, (int)wR, (int)wT, (int)wR, (int)wB, RGB(0, 0, 0));
+            // Redraw the accepted point as a small filled ellipse in saved color
+            int px = s.params[4], py = s.params[5];
+            HBRUSH br = CreateSolidBrush(s.color);
+            HBRUSH old = (HBRUSH)SelectObject(hdc, br);
+            Ellipse(hdc, px - 3, py - 3, px + 3, py + 3);
+            SelectObject(hdc, old);
+            DeleteObject(br);
+        }
+
+        // CLIP_SQ_LINE — params: [sqL, sqT, sqR, sqB, lx1, ly1, lx2, ly2]
+        // Re-draws the square clipping window border in black, then re-clips
+        // and draws the surviving line segment in the saved color.
+        else if (s.type == "CLIP_SQ_LINE" && s.params.size() >= 8)
+        {
+            double wL = s.params[0], wT = s.params[1],
+                wR = s.params[2], wB = s.params[3];
+            // Redraw the square window border in black
+            LineMidpoint(hdc, (int)wL, (int)wT, (int)wR, (int)wT, RGB(0, 0, 0));
+            LineMidpoint(hdc, (int)wL, (int)wB, (int)wR, (int)wB, RGB(0, 0, 0));
+            LineMidpoint(hdc, (int)wL, (int)wT, (int)wL, (int)wB, RGB(0, 0, 0));
+            LineMidpoint(hdc, (int)wR, (int)wT, (int)wR, (int)wB, RGB(0, 0, 0));
+            // Re-clip and draw in saved color
+            double lx1 = s.params[4], ly1 = s.params[5],
+                lx2 = s.params[6], ly2 = s.params[7];
+            COLORREF saved = currentColor;
+            currentColor = s.color;
+            CoheSuth(hdc, lx1, ly1, lx2, ly2, wL, wR, wB, wT);
+            currentColor = saved;
+        }
+
+        // CLIP_SQ_POINT — params: [sqL, sqT, sqR, sqB, px, py]
+        // Re-draws the square clipping window border in black, then draws the
+        // accepted point as a filled circle in the saved color.
+        else if (s.type == "CLIP_SQ_POINT" && s.params.size() >= 6)
+        {
+            double wL = s.params[0], wT = s.params[1],
+                wR = s.params[2], wB = s.params[3];
+            // Redraw the square window border in black
+            LineMidpoint(hdc, (int)wL, (int)wT, (int)wR, (int)wT, RGB(0, 0, 0));
+            LineMidpoint(hdc, (int)wL, (int)wB, (int)wR, (int)wB, RGB(0, 0, 0));
+            LineMidpoint(hdc, (int)wL, (int)wT, (int)wL, (int)wB, RGB(0, 0, 0));
+            LineMidpoint(hdc, (int)wR, (int)wT, (int)wR, (int)wB, RGB(0, 0, 0));
+            // Redraw the accepted point as a small filled ellipse in saved color
+            int px = s.params[4], py = s.params[5];
+            HBRUSH br = CreateSolidBrush(s.color);
+            HBRUSH old = (HBRUSH)SelectObject(hdc, br);
+            Ellipse(hdc, px - 3, py - 3, px + 3, py + 3);
+            SelectObject(hdc, old);
+            DeleteObject(br);
+        }
+
+        // CLIP_CIRCLE_LINE — params: [cx, cy, R, ox1, oy1, ox2, oy2]
+        // Re-draws the circle clipping window in black, then re-draws the
+        // already-clipped line segment directly in the saved color (no re-clip).
+        else if (s.type == "CLIP_CIRCLE_LINE" && s.params.size() >= 7)
+        {
+            // Redraw the circle window border in black
+            CircleMidpoint(hdc, s.params[0], s.params[1], s.params[2], RGB(0, 0, 0));
+            // Redraw the clipped segment in saved color
+            LineMidpoint(hdc, s.params[3], s.params[4],
+                s.params[5], s.params[6], s.color);
+        }
+
+        // CLIP_CIRCLE_POINT — params: [cx, cy, R, px, py]
+        // Re-draws the circle clipping window in black, then draws the
+        // accepted point as a filled circle in the saved color.
+        else if (s.type == "CLIP_CIRCLE_POINT" && s.params.size() >= 5)
+        {
+            // Redraw the circle window border in black
+            CircleMidpoint(hdc, s.params[0], s.params[1], s.params[2], RGB(0, 0, 0));
+            // Redraw the accepted point as a small filled ellipse in saved color
+            int px = s.params[3], py = s.params[4];
+            HBRUSH br = CreateSolidBrush(s.color);
+            HBRUSH old = (HBRUSH)SelectObject(hdc, br);
+            Ellipse(hdc, px - 3, py - 3, px + 3, py + 3);
+            SelectObject(hdc, old);
+            DeleteObject(br);
+        }
+
+        // CLIP_RECT_POLY — params: [xL, yT, xR, yB, n, x0,y0, x1,y1, ...]
+        // Re-draws the rectangle clipping window in black, then re-clips the
+        // polygon and draws the surviving inside portion in the saved color.
+        else if (s.type == "CLIP_RECT_POLY" && s.params.size() >= 5)
+        {
+            double wL = s.params[0], wT = s.params[1],
+                wR = s.params[2], wB = s.params[3];
+            // Redraw the rectangle window border in black
+            LineMidpoint(hdc, (int)wL, (int)wT, (int)wR, (int)wT, RGB(0, 0, 0));
+            LineMidpoint(hdc, (int)wL, (int)wB, (int)wR, (int)wB, RGB(0, 0, 0));
+            LineMidpoint(hdc, (int)wL, (int)wT, (int)wL, (int)wB, RGB(0, 0, 0));
+            LineMidpoint(hdc, (int)wR, (int)wT, (int)wR, (int)wB, RGB(0, 0, 0));
+            int n = s.params[4];
+            if ((int)s.params.size() >= 5 + 2 * n)
+            {
+                vector<Point> poly(n);
+                for (int i = 0; i < n; i++)
+                {
+                    poly[i].x = s.params[5 + 2 * i];
+                    poly[i].y = s.params[6 + 2 * i];
+                }
+                // Re-clip and draw inside portion in saved color
+                COLORREF saved = currentColor;
+                currentColor = s.color;
+                polygonclip(hdc, poly.data(), n, wL, wR, wB, wT);
+                currentColor = saved;
+            }
+        }
     }
 }
 
@@ -1379,6 +1521,7 @@ void HIntersect(double yedge, double x1, double y1, double x2, double y2,
 }
 
 // Cohen-Sutherland line clipper.
+
 void CoheSuth(HDC hdc, double& x1, double& y1, double& x2, double& y2,
     double xleft, double xright, double ybottom, double ytop)
 {
@@ -1407,10 +1550,10 @@ void CoheSuth(HDC hdc, double& x1, double& y1, double& x2, double& y2,
             out2 = GetOutCode(x2, y2, xleft, xright, ybottom, ytop);
         }
     }
-    // Draw only if both endpoints are now inside
+    // Draw only if both endpoints are now inside — uses currentColor (not hardcoded red)
     if (!out1.all && !out2.all)
         LineMidpoint(hdc, (int)round(x1), (int)round(y1),
-            (int)round(x2), (int)round(y2), RGB(255, 0, 0));
+            (int)round(x2), (int)round(y2), currentColor);
 }
 
 bool pointclip(double x, double y,
@@ -1461,17 +1604,6 @@ polygonn clipEdge(polygonn p, double edge, InF In, InterF Intersect)
 
 // ════════════════════════════════════════════════════════════════════════════
 // polygonclip — Sutherland-Hodgman polygon clipping.
-//
-// FIX: The original clipped against edges in wrong order for screen coords
-//      (y increases downward). The top edge must be clipped with Intop
-//      (keep points where p.y >= ytop, i.e. numerically >= the smaller y
-//      value) and bottom with Inbottom (keep where p.y <= ybottom).
-//      Swapping the order here was causing the wrong half to survive.
-//
-// The clipped polygon (inside portion) is drawn in currentColor.
-// Outside parts are simply not drawn — the blue preview is erased by
-// the InvalidateRect + UpdateWindow called in WM_RBUTTONDOWN before
-// this function runs, so only the surviving inside edges appear.
 // ════════════════════════════════════════════════════════════════════════════
 void polygonclip(HDC hdc, Point* p, int n,
     double xleft, double xright, double ybottom, double ytop)
@@ -1504,18 +1636,6 @@ void polygonclip(HDC hdc, Point* p, int n,
 
 // ════════════════════════════════════════════════════════════════════════════
 // CIRCLE CLIPPING WINDOW — helpers
-//
-// The circle window is defined by center (clipCircleCX, clipCircleCY)
-// and radius clipCircleR.
-//
-// PointInsideCircleWindow: true when the Euclidean distance from the
-//   point to the circle center is <= clipCircleR.
-//
-// ClipLineToCircle: parametric line-circle intersection.
-//   Solves |P(t)|² = R² for t ∈ [0,1] where P(t) = (x1,y1) + t*(dx,dy).
-//   Returns false (trivially reject) when no intersection exists and
-//   both endpoints are outside.  Returns true when the visible sub-segment
-//   [ox1,oy1]-[ox2,oy2] has been computed.
 // ════════════════════════════════════════════════════════════════════════════
 bool PointInsideCircleWindow(double x, double y)
 {
@@ -1524,8 +1644,6 @@ bool PointInsideCircleWindow(double x, double y)
 }
 
 // Clip a line segment to the circle window.
-// Returns true  → the clipped segment is in [ox1,oy1]-[ox2,oy2].
-// Returns false → segment is entirely outside the circle.
 bool ClipLineToCircle(double x1, double y1, double x2, double y2,
     double& ox1, double& oy1, double& ox2, double& oy2)
 {
@@ -1798,9 +1916,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             cout << "[CLIP] Circle Point : click circle center, then edge point "
                 "to define window, then click points to test.\n"; break;
         }
-        break; // FIX 1: this break was missing in the original — it caused
-        // every menu click to fall through into WM_LBUTTONDOWN with
-        // a garbage lParam, triggering spurious drawing actions.
+        break; 
     }
 
     // ── WM_LBUTTONDOWN: fires on every left mouse click ───────────────
@@ -2129,15 +2245,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         }
 
         // ════════════════════════════════════════════════════════════════
-        // CLIPPING — two completely separate, flat state machines.
-        //
-        // FIX 2: the original had the square block nested inside the rect
-        //        block, making it unreachable.  Each window type is now its
-        //        own top-level if block.
-        //
-        // Rectangle window: 3 clicks → P1, P2, then a third y-extent point.
-        // Square window   : 2 clicks → center, then a side point.
-        // Circle window   : 2 clicks → center, then an edge point.
+        // CLIPPING — two completely separate, flat state machines
+        // Rectangle window: 3 clicks → P1, P2, then a third y-extent point
+        // Square window   : 2 clicks → center, then a side point
+        // Circle window   : 2 clicks → center, then an edge point
         // ════════════════════════════════════════════════════════════════
 
         // ── Rectangle clipping ────────────────────────────────────────
@@ -2190,6 +2301,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                     CoheSuth(hdc, lx1, ly1, lx2, ly2, xLeft, xRight, yBottom, yTop);
                     DrawRectangleWindow(hdc);
                     ReleaseDC(hwnd, hdc);
+                    Shape s;
+                    s.type = "CLIP_RECT_LINE";
+                    s.color = currentColor;
+                    s.params = { (int)xLeft, (int)yTop, (int)xRight, (int)yBottom,
+                                 (int)x1Line, (int)y1Line, mx, my };
+                    shapes.push_back(s);
                     clipState = 3; // ready for another line
                     cout << "[CLIP] Line clipped.\n";
                 }
@@ -2204,8 +2321,18 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 HDC hdc = GetDC(hwnd);
                 if (inside)
                 {
-                    // Draw a small visible dot at the accepted point
-                    Ellipse(hdc, mx - 1, my - 1, mx + 1, my + 1);
+                   
+                    HBRUSH br = CreateSolidBrush(currentColor);
+                    HBRUSH old = (HBRUSH)SelectObject(hdc, br);
+                    Ellipse(hdc, mx - 3, my - 3, mx + 3, my + 3);
+                    SelectObject(hdc, old);
+                    DeleteObject(br);
+                    
+                    Shape s;
+                    s.type = "CLIP_RECT_POINT";
+                    s.color = currentColor;
+                    s.params = { (int)xLeft, (int)yTop, (int)xRight, (int)yBottom, mx, my };
+                    shapes.push_back(s);
                     cout << "[CLIP] Point INSIDE — drawn.\n";
                 }
                 else
@@ -2232,7 +2359,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         }
 
         // ── Square clipping ───────────────────────────────────────────
-        // FIX 2: completely separate block — not nested inside rect block
+        
         if (activeAlgorithm == "CLIP_SQ_LINE" ||
             activeAlgorithm == "CLIP_SQ_POINT")
         {
@@ -2270,6 +2397,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                     CoheSuth(hdc, lx1, ly1, lx2, ly2, sqLeft, sqRight, sqBottom, sqTop);
                     DrawSquareWindow(hdc);
                     ReleaseDC(hwnd, hdc);
+                    Shape s;
+                    s.type = "CLIP_SQ_LINE";
+                    s.color = currentColor;
+                    s.params = { (int)sqLeft, (int)sqTop, (int)sqRight, (int)sqBottom,
+                                 (int)x1Line, (int)y1Line, mx, my };
+                    shapes.push_back(s);
                     clipState = 3;
                     cout << "[CLIP] Line clipped.\n";
                 }
@@ -2277,14 +2410,25 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             }
 
             // ── Square Point clipping ─────────────────────────────────
-            // Only draws the point if it is inside the square window.
+            
             if (activeAlgorithm == "CLIP_SQ_POINT")
             {
                 bool inside = pointclip(mx, my, sqLeft, sqRight, sqBottom, sqTop);
                 HDC hdc = GetDC(hwnd);
                 if (inside)
                 {
-                    Ellipse(hdc, mx - 1, my - 1, mx + 1, my + 1);
+                    HBRUSH br = CreateSolidBrush(currentColor);
+                    HBRUSH old = (HBRUSH)SelectObject(hdc, br);
+                    Ellipse(hdc, mx - 3, my - 3, mx + 3, my + 3);
+                    SelectObject(hdc, old);
+                    DeleteObject(br);
+                    
+                    Shape s;
+                    s.type = "CLIP_SQ_POINT";
+                    s.color = currentColor;
+                    s.params = { (int)sqLeft, (int)sqTop, (int)sqRight, (int)sqBottom,
+                                 mx, my };
+                    shapes.push_back(s);
                     cout << "[CLIP] Point INSIDE — drawn.\n";
                 }
                 else
@@ -2335,8 +2479,18 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                     double ox1, oy1, ox2, oy2;
                     HDC hdc = GetDC(hwnd);
                     if (ClipLineToCircle(x1Line, y1Line, mx, my, ox1, oy1, ox2, oy2))
+                    {
                         LineMidpoint(hdc, (int)round(ox1), (int)round(oy1),
-                            (int)round(ox2), (int)round(oy2), RGB(255, 0, 0));
+                            (int)round(ox2), (int)round(oy2), currentColor);
+                       
+                        Shape s;
+                        s.type = "CLIP_CIRCLE_LINE";
+                        s.color = currentColor;
+                        s.params = { (int)clipCircleCX, (int)clipCircleCY, (int)clipCircleR,
+                                     (int)round(ox1), (int)round(oy1),
+                                     (int)round(ox2), (int)round(oy2) };
+                        shapes.push_back(s);
+                    }
                     DrawCircleClipWindow(hdc);
                     ReleaseDC(hwnd, hdc);
                     clipState = 3; // ready for next line
@@ -2353,7 +2507,18 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 HDC hdc = GetDC(hwnd);
                 if (inside)
                 {
-                    Ellipse(hdc, mx - 1, my - 1, mx + 1, my + 1);
+                    // Draw accepted point in currentColor (not hardcoded black)
+                    HBRUSH br = CreateSolidBrush(currentColor);
+                    HBRUSH old = (HBRUSH)SelectObject(hdc, br);
+                    Ellipse(hdc, mx - 3, my - 3, mx + 3, my + 3);
+                    SelectObject(hdc, old);
+                    DeleteObject(br);
+                    Shape s;
+                    s.type = "CLIP_CIRCLE_POINT";
+                    s.color = currentColor;
+                    s.params = { (int)clipCircleCX, (int)clipCircleCY, (int)clipCircleR,
+                                 mx, my };
+                    shapes.push_back(s);
                     cout << "[CLIP] Point INSIDE circle drawn.\n";
                 }
                 else
@@ -2381,8 +2546,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 HDC hdc = GetDC(hwnd);
                 DrawCardinalSpline(hdc, curvePoints.data(), n, curveTension, currentColor);
                 ReleaseDC(hwnd, hdc);
-
-                // Save: params = [tension*1000, n, x0,y0, x1,y1, ...]
                 Shape s;
                 s.type = "CURVE_CARDINAL";
                 s.color = currentColor;
@@ -2435,14 +2598,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         }
 
         // ── Right-click finalises Polygon Clipping ─────────────────────
-        // FIX: InvalidateRect + UpdateWindow flush the blue preview polygon
-        //      off the screen before drawing the clipped result, so only
-        //      the inside portion is visible and the outside parts are gone.
+        
         if (activeAlgorithm == "CLIP_RECT_POLY" && (int)polyPoints.size() >= 3)
         {
-            // Erase the blue preview polygon by forcing a full repaint first.
-            // UpdateWindow flushes WM_PAINT synchronously so the canvas is
-            // clean before we draw the clipped result on top.
             InvalidateRect(hwnd, NULL, TRUE);
             UpdateWindow(hwnd);
 
@@ -2451,10 +2609,19 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             // Redraw the clipping window border so it remains visible
             DrawRectangleWindow(hdc);
 
-            // polygonclip draws only the inside portion in currentColor;
-            // the outside is simply not drawn (deleted, not colored red).
             polygonclip(hdc, polyPoints.data(), (int)polyPoints.size(),
                 xLeft, xRight, yBottom, yTop);
+            Shape s;
+            s.type = "CLIP_RECT_POLY";
+            s.color = currentColor;
+            s.params = { (int)xLeft, (int)yTop, (int)xRight, (int)yBottom,
+                         (int)polyPoints.size() };
+            for (auto& pp : polyPoints)
+            {
+                s.params.push_back(pp.x);
+                s.params.push_back(pp.y);
+            }
+            shapes.push_back(s);
 
             ReleaseDC(hwnd, hdc);
             cout << "[CLIP] Polygon clipped : inside portion drawn, outside removed.\n";
