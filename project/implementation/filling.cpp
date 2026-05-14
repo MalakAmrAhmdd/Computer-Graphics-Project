@@ -13,10 +13,6 @@
 using namespace std;
 #define _USE_MATH_DEFINES
 
-//bool fillPolyCollecting = false;
-//vector<FillPoint> fillPolyPoints;
-
-
 // ════════════════════════════════════════════════════════════════════════════
 // CIRCLE FILLING
 //
@@ -63,7 +59,7 @@ void FillCircleWithLines(HDC hdc, int xc, int yc, int R, int quarter, COLORREF c
 }
 
 // Fill the selected quarter of a circle with concentric circle arcs.
-// Each ring is 5 pixels smaller than the last, down to radius 1.
+// Each ring is 1 pixel smaller than the last, down to radius 1.
 void FillCircleWithCircles(HDC hdc, int xc, int yc, int R, int quarter, COLORREF c)
 {
     double tStart, tEnd;
@@ -116,6 +112,9 @@ void FillCircleWithCircles(HDC hdc, int xc, int yc, int R, int quarter, COLORREF
 //
 // Params saved/loaded: [x1, y1, x2, y2]
 // ════════════════════════════════════════════════════════════════════════════
+
+
+//old sqaure hermite
 void FillSquareHermite(HDC hdc, int x1, int y1, int x2, int y2, COLORREF c)
 {
     const double H[4][4] = {
@@ -164,6 +163,57 @@ void FillSquareHermite(HDC hdc, int x1, int y1, int x2, int y2, COLORREF c)
         }
     }
 }
+
+void FillSquareHermiteLines(HDC hdc, int x1, int y1, int x2, int y2, COLORREF c)
+{
+    const double H[4][4] = {
+        { 1,  0,  0,  0},
+        { 0,  1,  0,  0},
+        {-3, -2,  3, -1},
+        { 2,  1, -2,  1}
+    };
+
+    int left = min(x1, x2);
+    int top = min(y1, y2);
+   
+    int side = min(abs(x2 - x1), abs(y2 - y1));
+    int right = left + side;
+    int bottom = top + side;
+
+    // const int    numCurves = side;
+    const double tension = 100.0;
+
+    if (side <= 0) return;
+
+    for (int xCol = left; xCol <= right; xCol++)
+    {
+        // double xCol = left + ((double)i / (numCurves - 1)) * side;
+
+        // Tangents point straight DOWN (along Y axis), no horizontal component
+        double G[4][2] = {
+            {(double)xCol, (double)top},
+            {0.0,          tension},
+            {(double)xCol, (double)bottom},
+            {0.0,          tension}
+        };
+
+        double C[4][2] = {};
+        for (int r = 0; r < 4; r++)
+            for (int col = 0; col < 2; col++)
+                for (int k = 0; k < 4; k++)
+                    C[r][col] += H[r][k] * G[k][col];
+
+        for (double t = 0.0; t <= 1.0; t += 0.001)
+        {
+            double V[4] = { 1.0, t, t * t, t * t * t };
+            double px = 0, py = 0;
+            for (int k = 0; k < 4; k++) { px += V[k] * C[k][0]; py += V[k] * C[k][1]; }
+            SetPixel(hdc, (int)round(px), (int)round(py), c);
+        }
+    }
+}
+
+
 // Evaluate a single cubic Bezier point at parameter t.
 // Uses the standard explicit form: B(t) = (1-t)^3*P0 + 3t(1-t)^2*P1
 //                                        + 3t^2(1-t)*P2 + t^3*P3
@@ -358,53 +408,3 @@ bool IsPointInsidePolygon(int x, int y)
     return inside;
 }
 
-void FillSquareHermiteLines(HDC hdc, int x1, int y1, int x2, int y2, COLORREF c)
-{
-    int numCurves = 80;
-    double tension = 100.0;
-
-    double left   = min(x1, x2);
-    double right  = max(x1, x2);
-    double top    = min(y1, y2);
-    double bottom = max(y1, y2);
-    double width  = right - left;
-
-    if (width <= 0 || bottom - top <= 0) return;
-
-    for (int i = 0; i < numCurves; i++)
-    {
-        double xCol = left + ((double)i / (numCurves - 1)) * width;
-
-        // Hermite matrix
-        const double H[4][4] = {
-            { 1,  0,  0,  0},
-            { 0,  1,  0,  0},
-            {-3, -2,  3, -1},
-            { 2,  1, -2,  1}
-        };
-
-        // Vertical curve: start=(xCol,top), end=(xCol,bottom)
-
-        double safeTension = min(tension, width / 2.5);
-        double G[4][2] = {
-            {xCol,           top},
-            {safeTension,    0.0},
-            {xCol,           bottom},
-            {-safeTension,   0.0}
-        };
-
-        double C[4][2] = {};
-        for (int r = 0; r < 4; r++)
-            for (int col = 0; col < 2; col++)
-                for (int k = 0; k < 4; k++)
-                    C[r][col] += H[r][k] * G[k][col];
-
-        for (double t = 0.0; t <= 1.0; t += 0.001)
-        {
-            double V[4] = { 1.0, t, t * t, t * t * t };
-            double px = 0, py = 0;
-            for (int k = 0; k < 4; k++) { px += V[k] * C[k][0]; py += V[k] * C[k][1]; }
-            SetPixel(hdc, (int)round(px), (int)round(py), c);
-        }
-    }
-}

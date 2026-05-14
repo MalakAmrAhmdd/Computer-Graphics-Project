@@ -7,13 +7,6 @@
 
 using namespace std;
 
-//double clipCircleCX = 0, clipCircleCY = 0, clipCircleR = 0;
-//bool   circleClipWaitingRadius = false;
-//
-//int clipState = 0;
-//bool polyCollect = false;
-
-
 // Draw the rectangle clipping window outline in black.
 void DrawRectangleWindow(HDC hdc)
 {
@@ -97,7 +90,7 @@ void CoheSuth(HDC hdc, double& x1, double& y1, double& x2, double& y2,
             out2 = GetOutCode(x2, y2, xleft, xright, ybottom, ytop);
         }
     }
-    // Draw only if both endpoints are now inside — uses currentColor (not hardcoded red)
+    // Draw only if both endpoints are now inside — uses currentColor
     if (!out1.all && !out2.all)
         LineMidpoint(hdc, (int)round(x1), (int)round(y1),
                      (int)round(x2), (int)round(y2), currentColor);

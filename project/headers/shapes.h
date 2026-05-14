@@ -12,6 +12,4 @@ struct Shape {
     COLORREF color;
 };
 
-//extern std::vector<Shape> shapes;
-
 #endif //LVL3_COMPUTER_GRAPHICS_SHAPES_H

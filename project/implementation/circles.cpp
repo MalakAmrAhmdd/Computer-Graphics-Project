@@ -64,7 +64,7 @@ void CircleMidpoint(HDC hdc, int xc, int yc, int R, COLORREF c) {
     }
 }
 
-//using second order (fewer calculations  no multiplication only addition
+//using second order (fewer calculations, no multiplication only addition)
 void CircleModMid(HDC hdc, int xc, int yc, int R, COLORREF c) {
     int x = 0;
     int y = R;

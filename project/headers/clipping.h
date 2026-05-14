@@ -9,7 +9,7 @@
 
 using namespace std;
 
-// ── 5: Add clipping click-state variables here ────────────────────
+// ──click-state variables ────────────────────
 union outcode {
     struct { unsigned L : 1, R : 1, B : 1, T : 1; };
     unsigned all : 4;
@@ -18,27 +18,8 @@ typedef bool  (*InF)(Point& p, double edge);
 typedef Point(*InterF)(Point& p1, Point& p2, double edge);
 typedef vector<Point> polygonn;
 
-//// Rectangle clipping window bounds
-//extern double xLeft, xRight, yTop, yBottom;
-//// Line endpoints reused for clipping
-//extern double x1line, y1line, x2Line, y2Line;
-//// Square clipping window bounds
-//extern double sqLeft, sqRight, sqTop, sqBottom;
-//
-//// Circle clipping window (center + radius)
-//extern double clipCircleCX, clipCircleCY, clipCircleR;
-//extern bool   circleClipWaitingRadius;
-
-// FIX 6: single unified clipState variable (the original had both
-//        clipStage and clipState, which are different variables — only
-//        clipState is actually read in the click handler).
-//extern int clipState;
-
 static int p1x, p1y;
 static int p2x, p2y;
-
-//extern vector<Point> polyPoints;
-//extern bool polyCollect;
 
 outcode GetOutCode(double x, double y, double xleft, double xright,
                    double ybottom, double ytop);

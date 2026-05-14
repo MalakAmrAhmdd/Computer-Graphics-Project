@@ -88,7 +88,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
     bgBrush = (HBRUSH)GetStockObject(LTGRAY_BRUSH);
 
-    // WNDCLASS — describes our window to Windows OS before creating it.
+    // WNDCLASS,describes our window to Windows OS before creating it.
     // Think of it as a blueprint/class definition for the window.
     WNDCLASS wc = {};
     wc.style = CS_HREDRAW | CS_VREDRAW; // repaint when resized
@@ -100,7 +100,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     wc.lpszClassName = L"MyClass"; // internal name used by CreateWindow
     RegisterClass(&wc);
 
-    // CreateWindow — actually creates the window using the blueprint above.
+    // CreateWindow,actually creates the window using the blueprint above.
     // The menu bar is attached here via CreateAppMenu().
     HWND hwnd = CreateWindow(
         L"MyClass", L"2D Drawing Package",
@@ -111,7 +111,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     ShowWindow(hwnd, nCmdShow);
     UpdateWindow(hwnd);
 
-    // Message loop — keeps the program running.
+    // Message loop,keeps the program running.
     // GetMessage() waits for the next event (mouse click, key press, repaint, etc.)
     // TranslateMessage() converts key events into character events
     // DispatchMessage() sends the event to WndProc for handling
@@ -126,7 +126,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// CreateAppMenu — builds the entire menu bar and returns it.
+// CreateAppMenu,builds the entire menu bar and returns it.
 // Called once inside CreateWindow() above.
 // To add items to a menu: AppendMenu(menuHandle, MF_STRING, YOUR_ID, L"Label")
 // ════════════════════════════════════════════════════════════════════════════
@@ -191,7 +191,6 @@ HMENU CreateAppMenu()
 
 
     // ── Clipping menu ────────────────────────────────────────────────────
-    // ── 5: Replace placeholder with real Clipping menu ────────────
     HMENU clipMenu = CreatePopupMenu();
     AppendMenu(clipMenu, MF_STRING, ID_CLIP_SQ_LINE, L"Square Line");
     AppendMenu(clipMenu, MF_STRING, ID_CLIP_SQ_POINT, L"Square Point");
@@ -212,7 +211,7 @@ HMENU CreateAppMenu()
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// ClearScreen — empties the shapes vector and forces a full window repaint.
+// ClearScreen,empties the shapes vector and forces a full window repaint.
 // WM_PAINT fires after InvalidateRect, which calls RedrawShapes(hdc).
 // Since shapes is now empty, nothing gets drawn → screen appears blank.
 // ════════════════════════════════════════════════════════════════════════════
@@ -256,11 +255,11 @@ void ClearScreen(HWND hwnd)
 
     cout << "[INFO] 2D Drawing Package started.\n";
     cout << "[INFO] Pick a tool from the menu, then click two points.\n";
-    cout << "[INFO] Canvas and console cleared — ready for next test.\n";
+    cout << "[INFO] Canvas and console cleared,ready for next test.\n";
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// SaveToFile — writes every shape in the shapes vector to a text file.
+// SaveToFile,writes every shape in the shapes vector to a text file.
 //
 // File format (one shape per line):
 //   TYPE COLOR PARAM_COUNT p1 p2 p3 ...
@@ -291,7 +290,7 @@ void SaveToFile(HWND hwnd)
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// LoadFromFile — reads shapes from a text file back into the shapes vector,
+// LoadFromFile,reads shapes from a text file back into the shapes vector,
 // then triggers WM_PAINT to redraw them all via RedrawShapes().
 //
 // Also runs in a background thread for the same reason as SaveToFile.
@@ -333,7 +332,7 @@ void LoadFromFile(HWND hwnd)
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// WndProc — the heart of the Win32 app. Every event (click, repaint, menu
+// WndProc,the heart of the Win32 app. Every event (click, repaint, menu,
 // selection, window close) comes here as a "message".
 //
 // msg      : what happened (WM_LBUTTONDOWN, WM_COMMAND, WM_PAINT, etc.)
@@ -404,10 +403,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             break;
         }
 
-            // ── Lines ────────────────────────────────────────────────
-            // Each case sets activeAlgorithm so WM_LBUTTONDOWN knows
-            // what to draw. Also resets the click state so a fresh
-            // two-click sequence starts cleanly.
+        // ── Lines ────────────────────────────────────────────────
+        // Each case sets activeAlgorithm so WM_LBUTTONDOWN knows
+        // what to draw. Also resets the click state so a fresh
+        // two-click sequence starts cleanly.
         case ID_LINE_DDA:
             activeAlgorithm = "DDA";
             waitingForSecondClick = false;
@@ -424,7 +423,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             cout << "[LINE] Parametric selected. Click start point.\n";
             break;
 
-            // ── Circles ──────────────────────────────────────────────
+        // ── Circles ──────────────────────────────────────────────
         case ID_CIRCLE_DIRECT:
             activeAlgorithm = "DIRECT";
             circleWaitingForRadius = false;
@@ -451,7 +450,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             cout << "[CIRCLE] Modified Midpoint selected. Click center.\n";
             break;
 
-            // ── Ellipses ─────────────────────────────────────────────
+        // ── Ellipses ─────────────────────────────────────────────
         case ID_ELLIPSE_DIRECT:
             activeAlgorithm = "Ellipse_Direct";
             ellipseWaiting = false;
@@ -468,7 +467,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             cout << "[ELLIPSE] Polar selected. Click center.\n";
             break;
 
-            // ── Cardinal Spline ───────────────────────────────────────
+        // ── Cardinal Spline ───────────────────────────────────────
         case ID_CURVE_CARDINAL:
             activeAlgorithm = "CURVE_CARDINAL";
             curveCollecting = false;
@@ -487,7 +486,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 .detach();
             break;
 
-            // ── Circle fill ───────────────────────────────────────────
+        // ── Circle fill ───────────────────────────────────────────
         case ID_FILL_CIRCLE_LINES:
             activeAlgorithm = "FILL_CIRCLE_LINES";
             fillWaitingCenter = false;
@@ -519,7 +518,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 .detach();
             break;
 
-            // ── Hermite / Bezier fill ─────────────────────────────────
+        // ── Hermite / Bezier fill ─────────────────────────────────
         case ID_FILL_SQUARE_HERMIT:
             activeAlgorithm = "FILL_SQUARE_HERMIT";
             hermiteWaitingSecond = false;
@@ -535,7 +534,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             cout << "[FILL] Rectangle with Bezier selected. Click first corner.\n";
             break;
 
-            // ── Convex / Non-Convex polygon fill ─────────────────────────────
+        // ── Convex / Non-Convex polygon fill ─────────────────────────────
         case ID_FILL_CONVEX:
             activeAlgorithm = "FILL_CONVEX";
             fillPolyPoints.clear();
@@ -551,17 +550,17 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             cout << "[FILL] Left-click to add vertices. Right-click to fill.\n";
             break;
 
-            // ── Flood fill ────────────────────────────────────────────
+        // ── Flood fill ────────────────────────────────────────────
         case ID_FILL_FLOOD_REC:
             activeAlgorithm = "recursive";
-            cout << "[FLOOD] Recursive Flood Fill — click 4 points for polygon.\n";
+            cout << "[FLOOD] Recursive Flood Fill, click 4 points for polygon.\n";
             break;
         case ID_FILL_FLOOD_NONREC:
             activeAlgorithm = "non_recursive";
-            cout << "[FLOOD] Non-Recursive Flood Fill — click 4 points for polygon.\n";
+            cout << "[FLOOD] Non-Recursive Flood Fill, click 4 points for polygon.\n";
             break;
 
-            // ── Smiley faces ──────────────────────────────────────────
+        // ── Smiley faces ──────────────────────────────────────────
         case ID_BONUS_HAPPY:
             activeAlgorithm = "SMILEY_HAPPY";
             smileyWaitingCenter = true;
@@ -575,13 +574,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             cout << "[BONUS] Sad Smiley selected. Click face center.\n";
             break;
 
-            // ── Clipping ─────────────────────────────────────────────
-
+        // ── Clipping ─────────────────────────────────────────────
         case ID_CLIP_RECT_LINE:
             activeAlgorithm = "CLIP_RECT_LINE";
             clipState = 0;
             polyPoints.clear();
-            cout << "[CLIP] Rect Line : click P1, P2, third point for height, "
+            cout << "[CLIP] Rect Line: click P1, P2, third point for height, "
                     "then line start + end.\n";
             break;
         case ID_CLIP_RECT_POINT:
@@ -630,11 +628,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         break;
     }
 
-        // ── WM_LBUTTONDOWN: fires on every left mouse click ───────────────
-        // LOWORD(lParam) = mouse X,  HIWORD(lParam) = mouse Y
-        // The logic here is a two-click system:
-        //   Click 1 → store start point, set waitingForSecondClick = true
-        //   Click 2 → draw the shape, save to shapes vector, reset state
+    // ── WM_LBUTTONDOWN: fires on every left mouse click ───────────────
+    // LOWORD(lParam) = mouse X,  HIWORD(lParam) = mouse Y
+    //   Click 1 → store start point, set waitingForSecondClick = true
+    //   Click 2 → draw the shape, save to shapes vector, reset state
     case WM_LBUTTONDOWN:
     {
         int mx = LOWORD(lParam);
@@ -862,6 +859,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             }
             return 0;
         }
+
+
         // ── Fill Rectangle with Bezier ─────────────────────────────────
         // Click 1: store first corner.
         // Click 2: draw filled rectangle with border, save shape.
@@ -917,7 +916,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
             if (!polygonDrawn)
             {
-                // Collect 4 vertices — the 4th automatically closes back to vertex 1
+                // Collect 4 vertices,the 4th automatically closes back to vertex 1
                 pts[pointCount++] = {mx, my};
                 // Mark clicked point in red for visibility
                 SetPixel(hdc, mx, my, RGB(255, 0, 0));
@@ -1011,7 +1010,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         }
 
         // ════════════════════════════════════════════════════════════════
-        // CLIPPING — two completely separate, flat state machines
         // Rectangle window: 3 clicks → P1, P2, then a third y-extent point
         // Square window   : 2 clicks → center, then a side point
         // Circle window   : 2 clicks → center, then an edge point
@@ -1022,7 +1020,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             activeAlgorithm == "CLIP_RECT_POINT" ||
             activeAlgorithm == "CLIP_RECT_POLY")
         {
-            // State 0,1,2 — build the clipping window
+            // State 0,1,2,build the clipping window
             if (clipState == 0)
             {
                 p1x = mx;
@@ -1054,7 +1052,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 return 0;
             }
 
-            // State 3+ — window is built, now do clipping
+            // State 3+,window is built, now do clipping
 
             // ── Rect Line clipping ────────────────────────────────────
             if (activeAlgorithm == "CLIP_RECT_LINE")
@@ -1105,16 +1103,16 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                     s.color = currentColor;
                     s.params = {(int)xLeft, (int)yTop, (int)xRight, (int)yBottom, mx, my};
                     shapes.push_back(s);
-                    cout << "[CLIP] Point INSIDE — drawn.\n";
+                    cout << "[CLIP] Point INSIDE,drawn.\n";
                 }
                 else
-                    cout << "[CLIP] Point OUTSIDE — not drawn.\n";
+                    cout << "[CLIP] Point OUTSIDE,not drawn.\n";
                 DrawRectangleWindow(hdc);
                 ReleaseDC(hwnd, hdc);
                 return 0;
             }
 
-            // ── Rect Polygon — accumulate vertices until right-click ──
+            // ── Rect Polygon,accumulate vertices until right-click ──
             if (activeAlgorithm == "CLIP_RECT_POLY")
             {
                 polyPoints.push_back({mx, my});
@@ -1207,10 +1205,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                     s.params = {(int)sqLeft, (int)sqTop, (int)sqRight, (int)sqBottom,
                                 mx, my};
                     shapes.push_back(s);
-                    cout << "[CLIP] Point INSIDE — drawn.\n";
+                    cout << "[CLIP] Point INSIDE,drawn.\n";
                 }
                 else
-                    cout << "[CLIP] Point OUTSIDE — not drawn.\n";
+                    cout << "[CLIP] Point OUTSIDE,not drawn.\n";
                 DrawSquareWindow(hdc);
                 ReleaseDC(hwnd, hdc);
                 return 0;
@@ -1314,7 +1312,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         return 0;
     }
 
-        // ── WM_RBUTTONDOWN: fires on every right mouse click ─────────────
+    // ── WM_RBUTTONDOWN: fires on every right mouse click ─────────────
     case WM_RBUTTONDOWN:
     {
         // ── Right-click finalises Cardinal Spline ──────────────────────
@@ -1362,7 +1360,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 NonConvexFill(hdc, fillPolyPoints, currentColor);
             ReleaseDC(hwnd, hdc);
 
-            // Save shape — params: [n, x0,y0, x1,y1, ...]
+            // Save shape,params: [n, x0,y0, x1,y1, ...]
             Shape s;
             s.type = activeAlgorithm;
             s.color = currentColor;
@@ -1412,10 +1410,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         return 0;
     }
 
-        // ── WM_PAINT: fires when window needs repainting ──────────────────
-        // Triggered by: window resize, minimize+restore, ClearScreen(),
-        // any InvalidateRect() call.
-        // BeginPaint/EndPaint are required to properly handle the paint cycle.
+    // ── WM_PAINT: fires when window needs repainting ──────────────────
+    // Triggered by: window resize, minimize+restore, ClearScreen(),
+    // any InvalidateRect() call.
+    // BeginPaint/EndPaint are required to properly handle the paint cycle.
     case WM_PAINT:
     {
         PAINTSTRUCT ps;
@@ -1425,9 +1423,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         return 0;
     }
 
-        // ── WM_DESTROY: fires when the window X button is clicked ─────────
-        // PostQuitMessage(0) puts a WM_QUIT into the message queue,
-        // which causes GetMessage() in WinMain to return 0, ending the loop.
+    // ── WM_DESTROY: fires when the window X button is clicked ─────────
+    // PostQuitMessage(0) puts a WM_QUIT into the message queue,
+    // which causes GetMessage() in WinMain to return 0, ending the loop.
     case WM_DESTROY:
         PostQuitMessage(0);
         break;

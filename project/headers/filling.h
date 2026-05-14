@@ -8,30 +8,27 @@
 
 using namespace std;
 
-// Now 4 clicks define the polygon; the 4th edge auto-closes back to point 1.
+// 4 clicks define the polygon; the 4th edge auto-closes back to point 1.
 extern POINT fpts[4];
-
-//// ── Convex / Non-Convex polygon fill click-state ──────────────────────────
-//// Vertices are collected with left-clicks; right-click triggers the fill.
-//struct FillPoint { int x, y; };
-////extern vector<FillPoint> fillPolyPoints;
-//extern bool fillPolyCollecting;
 
 // ──  Circle fill functions ──────────────────────────────
 void FillCircleWithLines(HDC hdc, int xc, int yc, int R, int quarter, COLORREF c);
 void FillCircleWithCircles(HDC hdc, int xc, int yc, int R, int quarter, COLORREF c);
+
 // ── Hermite&Bezier fill functions ──────────────────────────────
 void FillSquareHermite(HDC hdc, int x1, int y1, int x2, int y2, COLORREF c);
 static void BezierPoint(double p0x, double p0y,double p1x, double p1y,double p2x, double p2y,double p3x, double p3y,
                         double t, double& outX, double& outY);
 void FillRectangleBezier(HDC hdc, int x1, int y1, int x2, int y2, COLORREF c);
 void FillSquareHermiteLines(HDC hdc, int x1, int y1, int x2, int y2, COLORREF c);
-// ── Convex / Non-Convex fill ──────────────────────────────────────────────
+
+// ── Convex / Non-Convex fill ────────────────────────────────────────
 struct Edge {
     float x;
     int   yMax;
     float mInv;
 };
+
 static void EdgeToTable(FillPoint p1, FillPoint p2, vector<vector<Edge>>& table);
 static void PolygonToTable(vector<FillPoint>& polygon, vector<vector<Edge>>& table);
 void ConvexFill(HDC hdc, vector<FillPoint>& polygon, COLORREF c);

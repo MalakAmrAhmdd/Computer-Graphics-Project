@@ -84,7 +84,6 @@ void RedrawShapes(HDC hdc)
             LineParametric(hdc, s.params[0], s.params[1], s.params[2], s.params[3], s.color);
 
         // ── Circles ───────────────────────────────────────────────
-        // FIX 4: correct full type strings so circles survive repaint/load
         else if (s.type == "CIRCLE_DIRECT" && s.params.size() >= 3)
             CircleDirect(hdc, s.params[0], s.params[1], s.params[2], s.color);
         else if (s.type == "CIRCLE_POLAR" && s.params.size() >= 3)
@@ -97,7 +96,6 @@ void RedrawShapes(HDC hdc)
             CircleModMid(hdc, s.params[0], s.params[1], s.params[2], s.color);
 
         // ── Ellipses ──────────────────────────────────────────────
-        // FIX 5: type strings match what is saved in the click handler
         else if (s.type == "ELLIPSE_DIRECT" && s.params.size() >= 4)
             EllipseDirect(hdc, s.params[0], s.params[1], s.params[2], s.params[3], s.color);
         else if (s.type == "ELLIPSE_MIDPOINT" && s.params.size() >= 4)
@@ -186,7 +184,7 @@ void RedrawShapes(HDC hdc)
         else if (s.type == "SMILEY_SAD" && s.params.size() >= 3)
             DrawSmileySad(hdc, s.params[0], s.params[1], s.params[2], s.color);
 
-        // ── 5: Clipping redraw — replays saved clipped results ──────────
+        // Clipping redraw — replays saved clipped results ──────────
         // Each entry stores the window bounds + the already-clipped geometry,
         // so we just re-draw the result directly (no re-clipping needed).
 
