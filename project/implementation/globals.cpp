@@ -62,7 +62,7 @@ double sqLeft = 0, sqRight = 0, sqTop = 0, sqBottom = 0;
 vector<Point> polyPoints;
 // Circle clipping window (center + radius)
 double clipCircleCX = 0, clipCircleCY = 0, clipCircleR = 0;
-bool   circleClipWaitingRadius = false;
+bool circleClipWaitingRadius = false;
 int clipState = 0;
 
 POINT pts[4];
@@ -73,7 +73,7 @@ bool useRecursive = true;
 void RedrawShapes(HDC hdc)
 {
     // Each type is checked independently with its own size guard.
-    for (auto& s : shapes)
+    for (auto &s : shapes)
     {
         // ── Lines ─────────────────────────────────────────────────
         if (s.type == "LINE_DDA" && s.params.size() >= 4)
@@ -126,23 +126,22 @@ void RedrawShapes(HDC hdc)
         // ── Circle fill  — Params: [cx, cy, R, quarter] ─
         else if (s.type == "FILL_CIRCLE_LINES" && s.params.size() >= 4)
             FillCircleWithLines(hdc, s.params[0], s.params[1],
-                s.params[2], s.params[3], s.color);
+                                s.params[2], s.params[3], s.color);
         else if (s.type == "FILL_CIRCLE_CIRCLES" && s.params.size() >= 4)
             FillCircleWithCircles(hdc, s.params[0], s.params[1],
-                s.params[2], s.params[3], s.color);
+                                  s.params[2], s.params[3], s.color);
 
         // ── Hermite square fill — params: [x1, y1, x2, y2] ──────────────
         else if (s.type == "FILL_SQUARE_HERMIT" && s.params.size() >= 4)
             FillSquareHermite(hdc, s.params[0], s.params[1],
-                s.params[2], s.params[3], s.color);
+                              s.params[2], s.params[3], s.color);
 
         // ── Bezier rectangle fill — params: [x1, y1, x2, y2] ────────────
         else if (s.type == "FILL_RECT_BEZIER" && s.params.size() >= 4)
             FillRectangleBezier(hdc, s.params[0], s.params[1],
-                s.params[2], s.params[3], s.color);
+                                s.params[2], s.params[3], s.color);
         // ── Convex / Non-Convex fill — params: [n, x0,y0, x1,y1, ...] ──
-        else if ((s.type == "FILL_CONVEX" || s.type == "FILL_NONCONVEX")
-            && s.params.size() >= 1)
+        else if ((s.type == "FILL_CONVEX" || s.type == "FILL_NONCONVEX") && s.params.size() >= 1)
         {
             int n = s.params[0];
             if ((int)s.params.size() >= 1 + 2 * n)
@@ -160,11 +159,11 @@ void RedrawShapes(HDC hdc)
             }
         }
 
-        else if ((s.type == "FLOOD_RECURSIVE" || s.type == "FLOOD_NONRECURSIVE")
-         && s.params.size() >= 10)
+        else if ((s.type == "FLOOD_RECURSIVE" || s.type == "FLOOD_NONRECURSIVE") && s.params.size() >= 10)
         {
             // Restore the 4 polygon vertices into the global pts[] array
-            for (int i = 0; i < 4; i++) {
+            for (int i = 0; i < 4; i++)
+            {
                 pts[i].x = s.params[i * 2];
                 pts[i].y = s.params[i * 2 + 1];
             }
@@ -197,7 +196,7 @@ void RedrawShapes(HDC hdc)
         else if (s.type == "CLIP_RECT_LINE" && s.params.size() >= 8)
         {
             double wL = s.params[0], wT = s.params[1],
-                wR = s.params[2], wB = s.params[3];
+                   wR = s.params[2], wB = s.params[3];
             // Redraw the rectangle window border in black
             LineMidpoint(hdc, (int)wL, (int)wT, (int)wR, (int)wT, RGB(0, 0, 0));
             LineMidpoint(hdc, (int)wL, (int)wB, (int)wR, (int)wB, RGB(0, 0, 0));
@@ -205,7 +204,7 @@ void RedrawShapes(HDC hdc)
             LineMidpoint(hdc, (int)wR, (int)wT, (int)wR, (int)wB, RGB(0, 0, 0));
             // Re-clip the original line with the saved window and draw in saved color
             double lx1 = s.params[4], ly1 = s.params[5],
-                lx2 = s.params[6], ly2 = s.params[7];
+                   lx2 = s.params[6], ly2 = s.params[7];
             COLORREF saved = currentColor;
             currentColor = s.color;
             CoheSuth(hdc, lx1, ly1, lx2, ly2, wL, wR, wB, wT);
@@ -218,7 +217,7 @@ void RedrawShapes(HDC hdc)
         else if (s.type == "CLIP_RECT_POINT" && s.params.size() >= 6)
         {
             double wL = s.params[0], wT = s.params[1],
-                wR = s.params[2], wB = s.params[3];
+                   wR = s.params[2], wB = s.params[3];
             // Redraw the rectangle window border in black
             LineMidpoint(hdc, (int)wL, (int)wT, (int)wR, (int)wT, RGB(0, 0, 0));
             LineMidpoint(hdc, (int)wL, (int)wB, (int)wR, (int)wB, RGB(0, 0, 0));
@@ -239,7 +238,7 @@ void RedrawShapes(HDC hdc)
         else if (s.type == "CLIP_SQ_LINE" && s.params.size() >= 8)
         {
             double wL = s.params[0], wT = s.params[1],
-                wR = s.params[2], wB = s.params[3];
+                   wR = s.params[2], wB = s.params[3];
             // Redraw the square window border in black
             LineMidpoint(hdc, (int)wL, (int)wT, (int)wR, (int)wT, RGB(0, 0, 0));
             LineMidpoint(hdc, (int)wL, (int)wB, (int)wR, (int)wB, RGB(0, 0, 0));
@@ -247,7 +246,7 @@ void RedrawShapes(HDC hdc)
             LineMidpoint(hdc, (int)wR, (int)wT, (int)wR, (int)wB, RGB(0, 0, 0));
             // Re-clip and draw in saved color
             double lx1 = s.params[4], ly1 = s.params[5],
-                lx2 = s.params[6], ly2 = s.params[7];
+                   lx2 = s.params[6], ly2 = s.params[7];
             COLORREF saved = currentColor;
             currentColor = s.color;
             CoheSuth(hdc, lx1, ly1, lx2, ly2, wL, wR, wB, wT);
@@ -260,7 +259,7 @@ void RedrawShapes(HDC hdc)
         else if (s.type == "CLIP_SQ_POINT" && s.params.size() >= 6)
         {
             double wL = s.params[0], wT = s.params[1],
-                wR = s.params[2], wB = s.params[3];
+                   wR = s.params[2], wB = s.params[3];
             // Redraw the square window border in black
             LineMidpoint(hdc, (int)wL, (int)wT, (int)wR, (int)wT, RGB(0, 0, 0));
             LineMidpoint(hdc, (int)wL, (int)wB, (int)wR, (int)wB, RGB(0, 0, 0));
@@ -284,7 +283,7 @@ void RedrawShapes(HDC hdc)
             CircleMidpoint(hdc, s.params[0], s.params[1], s.params[2], RGB(0, 0, 0));
             // Redraw the clipped segment in saved color
             LineMidpoint(hdc, s.params[3], s.params[4],
-                s.params[5], s.params[6], s.color);
+                         s.params[5], s.params[6], s.color);
         }
 
         // CLIP_CIRCLE_POINT — params: [cx, cy, R, px, py]
@@ -309,7 +308,7 @@ void RedrawShapes(HDC hdc)
         else if (s.type == "CLIP_RECT_POLY" && s.params.size() >= 5)
         {
             double wL = s.params[0], wT = s.params[1],
-                wR = s.params[2], wB = s.params[3];
+                   wR = s.params[2], wB = s.params[3];
             // Redraw the rectangle window border in black
             LineMidpoint(hdc, (int)wL, (int)wT, (int)wR, (int)wT, RGB(0, 0, 0));
             LineMidpoint(hdc, (int)wL, (int)wB, (int)wR, (int)wB, RGB(0, 0, 0));
@@ -331,8 +330,10 @@ void RedrawShapes(HDC hdc)
                 currentColor = saved;
             }
         }
+        else if (s.type == "FILL_SQUARE_HERMIT_LINES" && s.params.size() >= 4)
+        {
+            FillSquareHermiteLines(hdc, s.params[0], s.params[1],
+                                   s.params[2], s.params[3], s.color);
+        }
     }
 }
-
-
-

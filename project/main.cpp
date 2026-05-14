@@ -51,6 +51,7 @@ using namespace std;
 #define ID_FILL_NONCONVEX 7006
 #define ID_FILL_FLOOD_REC 7007
 #define ID_FILL_FLOOD_NONREC 7008
+#define ID_FILL_SQUARE_HERMIT_LINES 7009
 
 #define ID_CLIP_RECT_POINT 8001
 #define ID_CLIP_RECT_LINE 8002
@@ -180,12 +181,14 @@ HMENU CreateAppMenu()
     AppendMenu(fillMenu, MF_STRING, ID_FILL_CIRCLE_LINES, L"Circle with Lines");
     AppendMenu(fillMenu, MF_STRING, ID_FILL_CIRCLE_CIRCLES, L"Circle with Circles");
     AppendMenu(fillMenu, MF_STRING, ID_FILL_SQUARE_HERMIT, L"Square with Hermite");
+    AppendMenu(fillMenu, MF_STRING, ID_FILL_SQUARE_HERMIT_LINES, L"Square with Hermite Lines");
     AppendMenu(fillMenu, MF_STRING, ID_FILL_RECT_BEZIER, L"Rectangle with Bezier");
     AppendMenu(fillMenu, MF_STRING, ID_FILL_CONVEX, L"Convex Polygon Fill");
     AppendMenu(fillMenu, MF_STRING, ID_FILL_NONCONVEX, L"Non-Convex Polygon Fill");
     AppendMenu(fillMenu, MF_STRING, ID_FILL_FLOOD_REC, L"Flood Fill (Recursive)");
     AppendMenu(fillMenu, MF_STRING, ID_FILL_FLOOD_NONREC, L"Flood Fill (Non-Recursive)");
     AppendMenu(menuBar, MF_POPUP, (UINT_PTR)fillMenu, L"Filling");
+
 
     // ── Clipping menu ────────────────────────────────────────────────────
     // ── 5: Replace placeholder with real Clipping menu ────────────
@@ -218,7 +221,6 @@ void ClearScreen(HWND hwnd)
     shapes.clear();
     InvalidateRect(hwnd, NULL, TRUE);
 
-    // Also reset any in-progress drawing state so the next tool starts clean
     activeAlgorithm = "";
     waitingForSecondClick = false;
     circleWaitingForRadius = false;
@@ -237,11 +239,24 @@ void ClearScreen(HWND hwnd)
     fillPolyPoints.clear();
     fillPolyCollecting = false;
 
-    // Clear the console window so the log is fresh for the next test
-    system("cls");
+    // Reset flood fill state too
+    polygonDrawn = false;
+    pointCount = 0;
+
+    // ── Clear the console using WinAPI ────────────────────────────────
+    HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    GetConsoleScreenBufferInfo(hConsole, &csbi);
+    DWORD cellCount = csbi.dwSize.X * csbi.dwSize.Y;
+    DWORD charsWritten;
+    COORD homeCoords = { 0, 0 };
+    FillConsoleOutputCharacter(hConsole, ' ', cellCount, homeCoords, &charsWritten);
+    FillConsoleOutputAttribute(hConsole, 0x07, cellCount, homeCoords, &charsWritten);
+    SetConsoleCursorPosition(hConsole, homeCoords);
+
     cout << "[INFO] 2D Drawing Package started.\n";
     cout << "[INFO] Pick a tool from the menu, then click two points.\n";
-    cout << "[INFO] Canvas and console cleared ready for next test.\n";
+    cout << "[INFO] Canvas and console cleared — ready for next test.\n";
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -509,6 +524,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             activeAlgorithm = "FILL_SQUARE_HERMIT";
             hermiteWaitingSecond = false;
             cout << "[FILL] Square with Hermite selected. Click first corner.\n";
+            break;
+        case ID_FILL_SQUARE_HERMIT_LINES:
+            activeAlgorithm = "FILL_SQUARE_HERMIT_LINES"; hermiteWaitingSecond = false;
+            cout << "[FILL] Square with Hermite Lines selected. Click first corner.\n"; 
             break;
         case ID_FILL_RECT_BEZIER:
             activeAlgorithm = "FILL_RECT_BEZIER";
@@ -820,6 +839,29 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             return 0;
         }
 
+        if (activeAlgorithm == "FILL_SQUARE_HERMIT_LINES")
+        {
+            if (!hermiteWaitingSecond)
+            {
+                hermiteX1 = mx; hermiteY1 = my;
+                hermiteWaitingSecond = true;
+                cout << "[FILL] First corner set. Click opposite corner.\n";
+            }
+            else
+            {
+                HDC hdc = GetDC(hwnd);
+                FillSquareHermiteLines(hdc, hermiteX1, hermiteY1, mx, my, currentColor);
+                ReleaseDC(hwnd, hdc);
+                Shape s;
+                s.type = "FILL_SQUARE_HERMIT_LINES";
+                s.color = currentColor;
+                s.params = { hermiteX1, hermiteY1, mx, my };
+                shapes.push_back(s);
+                cout << "[FILL] Hermite Lines square drawn.\n";
+                hermiteWaitingSecond = false;
+            }
+            return 0;
+        }
         // ── Fill Rectangle with Bezier ─────────────────────────────────
         // Click 1: store first corner.
         // Click 2: draw filled rectangle with border, save shape.

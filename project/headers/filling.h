@@ -25,6 +25,7 @@ void FillSquareHermite(HDC hdc, int x1, int y1, int x2, int y2, COLORREF c);
 static void BezierPoint(double p0x, double p0y,double p1x, double p1y,double p2x, double p2y,double p3x, double p3y,
                         double t, double& outX, double& outY);
 void FillRectangleBezier(HDC hdc, int x1, int y1, int x2, int y2, COLORREF c);
+void FillSquareHermiteLines(HDC hdc, int x1, int y1, int x2, int y2, COLORREF c);
 // ── Convex / Non-Convex fill ──────────────────────────────────────────────
 struct Edge {
     float x;
